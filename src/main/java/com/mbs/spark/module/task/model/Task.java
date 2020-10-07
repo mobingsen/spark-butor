@@ -1,5 +1,6 @@
 package com.mbs.spark.module.task.model;
 
+import com.google.gson.Gson;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -24,4 +25,8 @@ public class Task implements Serializable {
 	private String taskType;
 	private String taskStatus;
 	private String taskParam;
+
+	public Param toParam() {
+		return new Gson().fromJson(this.getTaskParam(), Param.class);
+	}
 }

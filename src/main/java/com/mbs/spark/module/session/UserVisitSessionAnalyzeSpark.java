@@ -1,6 +1,5 @@
 package com.mbs.spark.module.session;
 
-import com.alibaba.fastjson.JSONObject;
 import com.google.common.base.Optional;
 import com.mbs.spark.conf.ConfigurationManager;
 import com.mbs.spark.constant.Constants;
@@ -14,6 +13,7 @@ import com.mbs.spark.module.session.repository.SessionDetailRepository;
 import com.mbs.spark.module.session.repository.SessionRandomExtractRepository;
 import com.mbs.spark.module.session.repository.Top10CategoryRepository;
 import com.mbs.spark.module.session.repository.Top10SessionRepository;
+import com.mbs.spark.module.task.model.Param;
 import com.mbs.spark.module.task.model.Task;
 import com.mbs.spark.module.task.repository.TaskRepository;
 import com.mbs.spark.test.MockData;
@@ -33,7 +33,6 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.broadcast.Broadcast;
-import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.hive.HiveContext;
@@ -132,8 +131,6 @@ public class UserVisitSessionAnalyzeSpark {
 			return;
 		}
 
-		JSONObject taskParam = JSONObject.parseObject(task.getTaskParam());
-
 		// 如果要进行session粒度的数据聚合
 		// 首先要从user_visit_action表中，查询出来指定日期范围内的行为数据
 
@@ -149,7 +146,7 @@ public class UserVisitSessionAnalyzeSpark {
 		 * 重构完以后，actionRDD，就只在最开始，使用一次，用来生成以sessionid为key的RDD
 		 *
 		 */
-		JavaRDD<Row> actionRDD = SparkUtils.getActionRDDByDateRange(sqlContext, taskParam);
+		JavaRDD<Row> actionRDD = SparkUtils.getActionRDDByDateRange(sqlContext, task.toParam());
 		JavaPairRDD<String, Row> sessionid2actionRDD = getSessionid2ActionRDD(actionRDD);
 
 		/*
@@ -186,7 +183,7 @@ public class UserVisitSessionAnalyzeSpark {
 				"", new SessionAggrStatAccumulator());
 
 		JavaPairRDD<String, String> filteredSessionid2AggrInfoRDD = filterSessionAndAggrStat(
-				sessionid2AggrInfoRDD, taskParam, sessionAggrStatAccumulator);
+				sessionid2AggrInfoRDD, task.toParam(), sessionAggrStatAccumulator);
 		filteredSessionid2AggrInfoRDD = filteredSessionid2AggrInfoRDD.persist(StorageLevel.MEMORY_ONLY());
 
 		// 生成公共的RDD：通过筛选条件的session的访问明细数据
@@ -321,38 +318,38 @@ public class UserVisitSessionAnalyzeSpark {
 		}
 	}
 
-	/**
-	 * 获取指定日期范围内的用户访问行为数据
-	 * @param sqlContext SQLContext
-	 * @param taskParam 任务参数
-	 * @return 行为数据RDD
-	 */
-	private static JavaRDD<Row> getActionRDDByDateRange(
-			SQLContext sqlContext, JSONObject taskParam) {
-		String startDate = ParamUtils.getParam(taskParam, Constants.PARAM_START_DATE);
-		String endDate = ParamUtils.getParam(taskParam, Constants.PARAM_END_DATE);
-
-		String sql =
-				"select * "
-				+ "from user_visit_action "
-				+ "where date>='" + startDate + "' "
-				+ "and date<='" + endDate + "'";
-//				+ "and session_id not in('','','')"
-
-		DataFrame actionDF = sqlContext.sql(sql);
-
-		/**
-		 * 这里就很有可能发生上面说的问题
-		 * 比如说，Spark SQl默认就给第一个stage设置了20个task，但是根据你的数据量以及算法的复杂度
-		 * 实际上，你需要1000个task去并行执行
-		 *
-		 * 所以说，在这里，就可以对Spark SQL刚刚查询出来的RDD执行repartition重分区操作
-		 */
-
-//		return actionDF.javaRDD().repartition(1000);
-
-		return actionDF.javaRDD();
-	}
+//	/**
+//	 * 获取指定日期范围内的用户访问行为数据
+//	 * @param sqlContext SQLContext
+//	 * @param taskParam 任务参数
+//	 * @return 行为数据RDD
+//	 */
+//	private static JavaRDD<Row> getActionRDDByDateRange(
+//			SQLContext sqlContext, JSONObject taskParam) {
+//		String startDate = ParamUtils.getParam(taskParam, Constants.PARAM_START_DATE);
+//		String endDate = ParamUtils.getParam(taskParam, Constants.PARAM_END_DATE);
+//
+//		String sql =
+//				"select * "
+//				+ "from user_visit_action "
+//				+ "where date>='" + startDate + "' "
+//				+ "and date<='" + endDate + "'";
+////				+ "and session_id not in('','','')"
+//
+//		DataFrame actionDF = sqlContext.sql(sql);
+//
+//		/**
+//		 * 这里就很有可能发生上面说的问题
+//		 * 比如说，Spark SQl默认就给第一个stage设置了20个task，但是根据你的数据量以及算法的复杂度
+//		 * 实际上，你需要1000个task去并行执行
+//		 *
+//		 * 所以说，在这里，就可以对Spark SQL刚刚查询出来的RDD执行repartition重分区操作
+//		 */
+//
+////		return actionDF.javaRDD().repartition(1000);
+//
+//		return actionDF.javaRDD();
+//	}
 
 	/**
 	 * 获取sessionid2到访问行为数据的映射的RDD
@@ -834,22 +831,23 @@ public class UserVisitSessionAnalyzeSpark {
 	/**
 	 * 过滤session数据，并进行聚合统计
 	 * @param sessionid2AggrInfoRDD
+	 * @param param
 	 * @return
 	 */
 	private static JavaPairRDD<String, String> filterSessionAndAggrStat(
 			JavaPairRDD<String, String> sessionid2AggrInfoRDD,
-			final JSONObject taskParam,
+			final Param param,
 			final Accumulator<String> sessionAggrStatAccumulator) {
 		// 为了使用我们后面的ValieUtils，所以，首先将所有的筛选参数拼接成一个连接串
 		// 此外，这里其实大家不要觉得是多此一举
 		// 其实我们是给后面的性能优化埋下了一个伏笔
-		String startAge = ParamUtils.getParam(taskParam, Constants.PARAM_START_AGE);
-		String endAge = ParamUtils.getParam(taskParam, Constants.PARAM_END_AGE);
-		String professionals = ParamUtils.getParam(taskParam, Constants.PARAM_PROFESSIONALS);
-		String cities = ParamUtils.getParam(taskParam, Constants.PARAM_CITIES);
-		String sex = ParamUtils.getParam(taskParam, Constants.PARAM_SEX);
-		String keywords = ParamUtils.getParam(taskParam, Constants.PARAM_KEYWORDS);
-		String categoryIds = ParamUtils.getParam(taskParam, Constants.PARAM_CATEGORY_IDS);
+		String startAge = param.getStartAge();
+		String endAge = param.getEndAge();
+		String professionals = param.getProfessionals();
+		String cities = param.getCities();
+		String sex = param.getSex();
+		String keywords = param.getKeywords();
+		String categoryIds = param.getCategoryIds();
 
 		String _parameter = (startAge != null ? Constants.PARAM_START_AGE + "=" + startAge + "|" : "")
 				+ (endAge != null ? Constants.PARAM_END_AGE + "=" + endAge + "|" : "")

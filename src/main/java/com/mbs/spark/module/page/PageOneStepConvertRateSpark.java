@@ -1,10 +1,10 @@
 package com.mbs.spark.module.page;
 
-import com.alibaba.fastjson.JSONObject;
 import com.mbs.spark.constant.Constants;
-import com.mbs.spark.module.task.model.Task;
 import com.mbs.spark.module.page.model.PageSplitConvertRate;
 import com.mbs.spark.module.page.repository.PageSplitConvertRateRepository;
+import com.mbs.spark.module.task.model.Param;
+import com.mbs.spark.module.task.model.Task;
 import com.mbs.spark.module.task.repository.TaskRepository;
 import com.mbs.spark.util.DateUtils;
 import com.mbs.spark.util.NumberUtils;
@@ -62,11 +62,8 @@ public class PageOneStepConvertRateSpark {
 			return;
 		}
 
-		JSONObject taskParam = JSONObject.parseObject(task.getTaskParam());
-
 		// 4、查询指定日期范围内的用户访问行为数据
-		JavaRDD<Row> actionRDD = SparkUtils.getActionRDDByDateRange(
-				sqlContext, taskParam);
+		JavaRDD<Row> actionRDD = SparkUtils.getActionRDDByDateRange(sqlContext, task.toParam());
 
 		// 对用户访问行为数据做一个映射，将其映射为<sessionid,访问行为>的格式
 		// 咱们的用户访问页面切片的生成，是要基于每个session的访问数据，来进行生成的
@@ -86,17 +83,15 @@ public class PageOneStepConvertRateSpark {
 		JavaPairRDD<String, Iterable<Row>> sessionid2actionsRDD = sessionid2actionRDD.groupByKey();
 
 		// 最核心的一步，每个session的单跳页面切片的生成，以及页面流的匹配，算法
-		JavaPairRDD<String, Integer> pageSplitRDD = generateAndMatchPageSplit(
-				sc, sessionid2actionsRDD, taskParam);
+		JavaPairRDD<String, Integer> pageSplitRDD = generateAndMatchPageSplit(sc, sessionid2actionsRDD, task.toParam());
 		Map<String, Object> pageSplitPvMap = pageSplitRDD.countByKey();
 
 		// 使用者指定的页面流是3,2,5,8,6
 		// 咱们现在拿到的这个pageSplitPvMap，3->2，2->5，5->8，8->6
-		long startPagePv = getStartPagePv(taskParam, sessionid2actionsRDD);
+		long startPagePv = getStartPagePv(task.toParam(), sessionid2actionsRDD);
 
 		// 计算目标页面流的各个页面切片的转化率
-		Map<String, Double> convertRateMap = computePageSplitConvertRate(
-				taskParam, pageSplitPvMap, startPagePv);
+		Map<String, Double> convertRateMap = computePageSplitConvertRate(task.toParam(), pageSplitPvMap, startPagePv);
 
 		// 持久化页面切片转化率
 		persistConvertRate(taskid, convertRateMap);
@@ -116,14 +111,14 @@ public class PageOneStepConvertRateSpark {
 	 * 页面切片生成与匹配算法
 	 * @param sc
 	 * @param sessionid2actionsRDD
-	 * @param taskParam
+	 * @param param
 	 * @return
 	 */
 	private static JavaPairRDD<String, Integer> generateAndMatchPageSplit(
 			JavaSparkContext sc,
 			JavaPairRDD<String, Iterable<Row>> sessionid2actionsRDD,
-			JSONObject taskParam) {
-		String targetPageFlow = ParamUtils.getParam(taskParam, Constants.PARAM_TARGET_PAGE_FLOW);
+			Param param) {
+		String targetPageFlow = param.getTargetPageFlow();
 		final Broadcast<String> targetPageFlowBroadcast = sc.broadcast(targetPageFlow);
 		return sessionid2actionsRDD.flatMapToPair(tuple -> generateAndMatchPage(targetPageFlowBroadcast, tuple));
 	}
@@ -202,13 +197,13 @@ public class PageOneStepConvertRateSpark {
 
 	/**
 	 * 获取页面流中初始页面的pv
-	 * @param taskParam
+	 * @param param
 	 * @param sessionid2actionsRDD
 	 * @return
 	 */
-	private static long getStartPagePv(JSONObject taskParam,
+	private static long getStartPagePv(Param param,
 									   JavaPairRDD<String, Iterable<Row>> sessionid2actionsRDD) {
-		String targetPageFlow = ParamUtils.getParam(taskParam, Constants.PARAM_TARGET_PAGE_FLOW);
+		String targetPageFlow = param.getTargetPageFlow();
 		final long startPageId = Long.parseLong(targetPageFlow.split(",")[0]);
 		return sessionid2actionsRDD
 				.flatMap(tuple -> StreamSupport.stream(tuple._2.spliterator(), true)
@@ -218,18 +213,19 @@ public class PageOneStepConvertRateSpark {
 
 	/**
 	 * 计算页面切片转化率
+	 *
+	 * @param param
 	 * @param pageSplitPvMap 页面切片pv
 	 * @param startPagePv 起始页面pv
 	 * @return
 	 */
 	private static Map<String, Double> computePageSplitConvertRate(
-			JSONObject taskParam,
+			Param param,
 			Map<String, Object> pageSplitPvMap,
 			long startPagePv) {
-		Map<String, Double> convertRateMap = new HashMap<String, Double>();
+		Map<String, Double> convertRateMap = new HashMap<>();
 
-		String[] targetPages = ParamUtils.getParam(taskParam,
-				Constants.PARAM_TARGET_PAGE_FLOW).split(",");
+		String[] targetPages = param.getTargetPageFlow().split(",");
 
 		long lastPageSplitPv = 0L;
 

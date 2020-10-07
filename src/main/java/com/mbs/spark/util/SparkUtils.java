@@ -1,5 +1,9 @@
 package com.mbs.spark.util;
 
+import com.mbs.spark.conf.ConfigurationManager;
+import com.mbs.spark.constant.Constants;
+import com.mbs.spark.module.task.model.Param;
+import com.mbs.spark.test.MockData;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaRDD;
@@ -8,11 +12,6 @@ import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.hive.HiveContext;
-
-import com.alibaba.fastjson.JSONObject;
-import com.mbs.spark.conf.ConfigurationManager;
-import com.mbs.spark.constant.Constants;
-import com.mbs.spark.test.MockData;
 
 /**
  * Spark工具类
@@ -62,14 +61,13 @@ public class SparkUtils {
 	/**
 	 * 获取指定日期范围内的用户行为数据RDD
 	 * @param sqlContext
-	 * @param taskParam
+	 * @param param
 	 * @return
 	 */
 	public static JavaRDD<Row> getActionRDDByDateRange(
-			SQLContext sqlContext, JSONObject taskParam) {
-		String startDate = ParamUtils.getParam(taskParam, Constants.PARAM_START_DATE);
-		String endDate = ParamUtils.getParam(taskParam, Constants.PARAM_END_DATE);
-
+			SQLContext sqlContext, Param param) {
+		String startDate = param.getStartDate();
+		String endDate = param.getEndDate();
 		String sql =
 				"select * "
 				+ "from user_visit_action "

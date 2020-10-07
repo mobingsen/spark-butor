@@ -1,7 +1,5 @@
 package com.mbs.spark.util;
 
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 import com.mbs.spark.conf.ConfigurationManager;
 import com.mbs.spark.constant.Constants;
 
@@ -34,17 +32,17 @@ public class ParamUtils {
 		return null;
 	}
 
-	/**
-	 * 从JSON对象中提取参数
-	 * @param jsonObject JSON对象
-	 * @return 参数
-	 */
-	public static String getParam(JSONObject jsonObject, String field) {
-		JSONArray jsonArray = jsonObject.getJSONArray(field);
-		if(jsonArray != null && jsonArray.size() > 0) {
-			return jsonArray.getString(0);
-		}
-		return null;
-	}
+//	/**
+//	 * 从JSON对象中提取参数
+//	 * @param jsonObject JSON对象
+//	 * @return 参数
+//	 */
+//	public static String getParam(JSONObject jsonObject, String field) {
+//		JSONArray jsonArray = jsonObject.getJSONArray(field);
+//		if(jsonArray != null && jsonArray.size() > 0) {
+//			return jsonArray.getString(0);
+//		}
+//		return null;
+//	}
 
 }

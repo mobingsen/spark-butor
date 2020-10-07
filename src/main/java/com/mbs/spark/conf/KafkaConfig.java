@@ -1,6 +1,7 @@
 package com.mbs.spark.conf;
 
 import lombok.Getter;
+import lombok.Setter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -14,14 +15,13 @@ import java.util.stream.Collectors;
 /**
  * Created by 小墨 on 2020/10/7 0:24
  */
+@Setter
 @Getter
 @Component
 @ConfigurationProperties(prefix = "kafka")
 public class KafkaConfig {
 
-    @Value("${kafka.brokers}")
     private String brokers;
-
     private String topics;
 
     public Set<String> getTopicSet() {

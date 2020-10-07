@@ -1,9 +1,7 @@
 package com.mbs.spark.module.product;
 
-import com.alibaba.fastjson.JSONObject;
 import com.mbs.spark.conf.ConfigurationManager;
 import com.mbs.spark.constant.Constants;
-import com.mbs.spark.module.task.model.Task;
 import com.mbs.spark.module.product.model.AreaTop3Product;
 import com.mbs.spark.module.product.repository.AreaTop3ProductRepository;
 import com.mbs.spark.module.product.udf.ConcatLongStringUDF;
@@ -11,6 +9,8 @@ import com.mbs.spark.module.product.udf.GetJsonObjectUDF;
 import com.mbs.spark.module.product.udf.GroupConcatDistinctUDAF;
 import com.mbs.spark.module.product.udf.RandomPrefixUDF;
 import com.mbs.spark.module.product.udf.RemoveRandomPrefixUDF;
+import com.mbs.spark.module.task.model.Param;
+import com.mbs.spark.module.task.model.Task;
 import com.mbs.spark.module.task.repository.TaskRepository;
 import com.mbs.spark.util.ParamUtils;
 import com.mbs.spark.util.SparkUtils;
@@ -77,9 +77,9 @@ public class AreaTop3ProductSpark {
 		long taskid = ParamUtils.getTaskIdFromArgs(args, Constants.SPARK_LOCAL_TASKID_PRODUCT);
 		Task task = taskRepository.findById(taskid).orElse(null);
 
-		JSONObject taskParam = JSONObject.parseObject(task.getTaskParam());
-		String startDate = ParamUtils.getParam(taskParam, Constants.PARAM_START_DATE);
-		String endDate = ParamUtils.getParam(taskParam, Constants.PARAM_END_DATE);
+		Param param = task.toParam();
+		String startDate = param.getStartDate();
+		String endDate = param.getEndDate();
 
 		// 查询用户指定日期范围内的点击行为数据（city_id，在哪个城市发生的点击行为）
 		// 技术点1：Hive数据源的使用
