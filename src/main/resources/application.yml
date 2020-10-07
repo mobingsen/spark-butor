@@ -1,0 +1,33 @@
+
+spring:
+  application:
+    name: Spark Pro
+  datasource:
+    url: jdbc:mysql://localhost:3306/spark_pro?useSSL=false&useUnicode=true&characterEncoding=utf-8&allowMultiQueries=true&serverTimezone=GMT%2B8&autoReconnect=true
+    username: root
+    password: '123456'
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-test-query: SELECT 1 FROM DUAL
+      max-lifetime: 60000
+      connection-timeout: 30000
+      pool-name: ${spring.application.name} POOL
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.MySQL8Dialect
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+spark:
+  local: true
+  task:
+    session: 2
+    page: 3
+
+kafka:
+  brokers: 192.168.1.105:9092,192.168.1.106:9092,192.168.1.107:9092
+  topics: AdRealTimeLog
