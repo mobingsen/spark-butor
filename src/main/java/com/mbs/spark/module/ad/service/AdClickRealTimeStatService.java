@@ -1,8 +1,8 @@
 package com.mbs.spark.module.ad.service;
 
 import com.google.common.base.Optional;
-import com.mbs.spark.conf.KafkaConfig;
-import com.mbs.spark.conf.SparkConfig;
+import com.mbs.spark.conf.KafkaConfigurer;
+import com.mbs.spark.conf.SparkConfigurer;
 import com.mbs.spark.module.ad.model.AdBlacklist;
 import com.mbs.spark.module.ad.model.AdClickTrend;
 import com.mbs.spark.module.ad.model.AdProvinceTop3;
@@ -49,9 +49,9 @@ import java.util.stream.Collectors;
 public class AdClickRealTimeStatService {
 
     @Autowired
-    SparkConfig sparkConfig;
+    SparkConfigurer sparkConfigurer;
     @Autowired
-    KafkaConfig kafkaConfig;
+    KafkaConfigurer kafkaConfig;
     @Autowired
     AdBlackListRepository adBlackListRepository;
     @Autowired
@@ -644,8 +644,7 @@ public class AdClickRealTimeStatService {
             String dateMinute = keySplited[0];
             long adid = Long.parseLong(keySplited[1]);
             long clickCount = tuple._2;
-            String date = DateUtils.formatDate(DateUtils.parseDateKey(
-                    dateMinute.substring(0, 8)));
+            String date = DateUtils.formatDate(DateUtils.parseDateKey(dateMinute.substring(0, 8)));
             String hour = dateMinute.substring(8, 10);
             String minute = dateMinute.substring(10);
             AdClickTrend adClickTrend = new AdClickTrend();

@@ -27,6 +27,7 @@ spark:
   task:
     session: 2
     page: 3
+    product: 0
 
 kafka:
   brokers: 192.168.1.105:9092,192.168.1.106:9092,192.168.1.107:9092

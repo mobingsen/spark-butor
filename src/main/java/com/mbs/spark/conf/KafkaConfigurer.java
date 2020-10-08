@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 @Getter
 @Component
 @ConfigurationProperties(prefix = "kafka")
-public class KafkaConfig {
+public class KafkaConfigurer {
 
     private String brokers;
     private String topics;

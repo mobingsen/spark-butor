@@ -1,7 +1,7 @@
 package com.mbs.spark.module.product.service;
 
-import com.mbs.spark.conf.ConfigurationManager;
-import com.mbs.spark.constant.Constants;
+import com.mbs.spark.conf.JdbcConfigurer;
+import com.mbs.spark.conf.SparkConfigurer;
 import com.mbs.spark.module.product.model.AreaTop3Product;
 import com.mbs.spark.module.product.repository.AreaTop3ProductRepository;
 import com.mbs.spark.module.product.udf.ConcatLongStringUDF;
@@ -12,8 +12,7 @@ import com.mbs.spark.module.product.udf.RemoveRandomPrefixUDF;
 import com.mbs.spark.module.task.model.Param;
 import com.mbs.spark.module.task.model.Task;
 import com.mbs.spark.module.task.repository.TaskRepository;
-import com.mbs.spark.util.ParamUtils;
-import com.mbs.spark.util.SparkUtils;
+import com.mbs.spark.test.MockData;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -22,6 +21,7 @@ import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SQLContext;
+import org.apache.spark.sql.hive.HiveContext;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
@@ -45,16 +45,21 @@ public class AreaTop3ProductService {
 	AreaTop3ProductRepository areaTop3ProductRepository;
 	@Autowired
 	TaskRepository taskRepository;
+	@Autowired
+	SparkConfigurer sparkConfigurer;
+	@Autowired
+	JdbcConfigurer jdbcConfigurer;
 
 	public void main(String[] args) {
 		// 创建SparkConf
 		SparkConf conf = new SparkConf()
 				.setAppName("AreaTop3ProductSpark");
-		SparkUtils.setMaster(conf);
-
+		if(sparkConfigurer.isLocal()) {
+			conf.setMaster("local");
+		}
 		// 构建Spark上下文
 		JavaSparkContext sc = new JavaSparkContext(conf);
-		SQLContext sqlContext = SparkUtils.getSQLContext(sc.sc());
+		SQLContext sqlContext = sparkConfigurer.isLocal() ? new SQLContext(sc.sc()) : new HiveContext(sc.sc());
 //		sqlContext.setConf("spark.sql.shuffle.partitions", "1000");
 //		sqlContext.setConf("spark.sql.autoBroadcastJoinThreshold", "20971520");
 
@@ -71,10 +76,12 @@ public class AreaTop3ProductService {
 				new GroupConcatDistinctUDAF());
 
 		// 准备模拟数据
-		SparkUtils.mockData(sc, sqlContext);
+		if(sparkConfigurer.isLocal()) {
+			MockData.mock(sc, sqlContext);
+		}
 
 		// 获取命令行传入的taskid，查询对应的任务参数
-		long taskid = ParamUtils.getTaskIdFromArgs(args, Constants.SPARK_LOCAL_TASKID_PRODUCT);
+		long taskid = sparkConfigurer.isLocal() ? sparkConfigurer.getTaskProduct() : Long.parseLong(args[0]);
 		Task task = taskRepository.findById(taskid).orElse(null);
 
 		Param param = task.toParam();
@@ -149,29 +156,16 @@ public class AreaTop3ProductService {
 	 * @param sqlContext SQLContext
 	 * @return
 	 */
-	private static JavaPairRDD<Long, Row> getcityid2CityInfoRDD(SQLContext sqlContext) {
+	private JavaPairRDD<Long, Row> getcityid2CityInfoRDD(SQLContext sqlContext) {
 		// 构建MySQL连接配置信息（直接从配置文件中获取）
-		String url = null;
-		String user = null;
-		String password = null;
-		boolean local = ConfigurationManager.getBoolean(Constants.SPARK_LOCAL);
-
-		if(local) {
-			url = ConfigurationManager.getProperty(Constants.JDBC_URL);
-			user = ConfigurationManager.getProperty(Constants.JDBC_USER);
-			password = ConfigurationManager.getProperty(Constants.JDBC_PASSWORD);
-		} else {
-			url = ConfigurationManager.getProperty(Constants.JDBC_URL_PROD);
-			user = ConfigurationManager.getProperty(Constants.JDBC_USER_PROD);
-			password = ConfigurationManager.getProperty(Constants.JDBC_PASSWORD_PROD);
-		}
-
+		String url = jdbcConfigurer.getUrl();
+		String user = jdbcConfigurer.getUsername();
+		String password = jdbcConfigurer.getPassword();
 		Map<String, String> options = new HashMap<String, String>();
 		options.put("url", url);
 		options.put("dbtable", "city_info");
 		options.put("user", user);
 		options.put("password", password);
-
 		// 通过SQLContext去从MySQL中查询数据
 		return sqlContext
 				.read()

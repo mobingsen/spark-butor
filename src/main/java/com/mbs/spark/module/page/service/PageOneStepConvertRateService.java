@@ -1,22 +1,24 @@
 package com.mbs.spark.module.page.service;
 
+import com.mbs.spark.conf.SparkConfigurer;
 import com.mbs.spark.constant.Constants;
 import com.mbs.spark.module.page.model.PageSplitConvertRate;
 import com.mbs.spark.module.page.repository.PageSplitConvertRateRepository;
 import com.mbs.spark.module.task.model.Param;
 import com.mbs.spark.module.task.model.Task;
 import com.mbs.spark.module.task.repository.TaskRepository;
+import com.mbs.spark.test.MockData;
 import com.mbs.spark.util.DateUtils;
 import com.mbs.spark.util.NumberUtils;
-import com.mbs.spark.util.ParamUtils;
-import com.mbs.spark.util.SparkUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
+import org.apache.spark.sql.hive.HiveContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import scala.Tuple2;
@@ -40,22 +42,36 @@ public class PageOneStepConvertRateService {
 	PageSplitConvertRateRepository pageSplitConvertRateRepository;
 	@Autowired
 	TaskRepository taskRepository;
+	@Autowired
+	SparkConfigurer sparkConfigurer;
 
 	public void main(String[] args) {
 		// 1、构造Spark上下文
 		SparkConf conf = new SparkConf()
 				.setAppName(Constants.SPARK_APP_NAME_PAGE);
-		SparkUtils.setMaster(conf);
-
+		if(sparkConfigurer.isLocal()) {
+			conf.setMaster("local");
+		}
 		JavaSparkContext sc = new JavaSparkContext(conf);
-		SQLContext sqlContext = SparkUtils.getSQLContext(sc.sc());
+		SQLContext sqlContext = sparkConfigurer.isLocal() ? new SQLContext(sc.sc()) : new HiveContext(sc.sc());
 
 		// 2、生成模拟数据
-		SparkUtils.mockData(sc, sqlContext);
-
+		if(sparkConfigurer.isLocal()) {
+			MockData.mock(sc, sqlContext);
+		}
 		// 3、查询任务，获取任务的参数
-		long taskid = ParamUtils.getTaskIdFromArgs(args, Constants.SPARK_LOCAL_TASKID_PAGE);
-
+		long taskid = 0;
+		if(sparkConfigurer.isLocal()) {
+			taskid = sparkConfigurer.getTaskPage();
+		} else {
+			try {
+				if(args != null && args.length > 0) {
+					taskid =  Long.parseLong(args[0]);
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
 		Task task = taskRepository.findById(taskid).orElse(null);
 		if(task == null) {
 			System.out.println(new Date() + ": cannot find this task with id [" + taskid + "].");
@@ -63,7 +79,7 @@ public class PageOneStepConvertRateService {
 		}
 
 		// 4、查询指定日期范围内的用户访问行为数据
-		JavaRDD<Row> actionRDD = SparkUtils.getActionRDDByDateRange(sqlContext, task.toParam());
+		JavaRDD<Row> actionRDD = getActionRDDByDateRange(sqlContext, task.toParam());
 
 		// 对用户访问行为数据做一个映射，将其映射为<sessionid,访问行为>的格式
 		// 咱们的用户访问页面切片的生成，是要基于每个session的访问数据，来进行生成的
@@ -95,6 +111,29 @@ public class PageOneStepConvertRateService {
 
 		// 持久化页面切片转化率
 		persistConvertRate(taskid, convertRateMap);
+	}
+
+	/**
+	 * 获取指定日期范围内的用户行为数据RDD
+	 * @param sqlContext
+	 * @param param
+	 * @return
+	 */
+	public JavaRDD<Row> getActionRDDByDateRange(SQLContext sqlContext, Param param) {
+		String startDate = param.getStartDate();
+		String endDate = param.getEndDate();
+		String sql = "select * from user_visit_action where date>='" + startDate + "' and date<='" + endDate + "'";
+//				+ "and session_id not in('','','')"
+		DataFrame actionDF = sqlContext.sql(sql);
+		/*
+		 * 这里就很有可能发生上面说的问题
+		 * 比如说，Spark SQl默认就给第一个stage设置了20个task，但是根据你的数据量以及算法的复杂度
+		 * 实际上，你需要1000个task去并行执行
+		 *
+		 * 所以说，在这里，就可以对Spark SQL刚刚查询出来的RDD执行repartition重分区操作
+		 */
+//		return actionDF.javaRDD().repartition(1000);
+		return actionDF.javaRDD();
 	}
 
 	/**

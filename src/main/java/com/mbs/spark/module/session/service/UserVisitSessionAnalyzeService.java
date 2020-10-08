@@ -1,7 +1,7 @@
 package com.mbs.spark.module.session.service;
 
 import com.google.common.base.Optional;
-import com.mbs.spark.conf.ConfigurationManager;
+import com.mbs.spark.conf.SparkConfigurer;
 import com.mbs.spark.constant.Constants;
 import com.mbs.spark.module.product.model.Top10Category;
 import com.mbs.spark.module.session.CategorySortKey;
@@ -21,8 +21,6 @@ import com.mbs.spark.module.task.repository.TaskRepository;
 import com.mbs.spark.test.MockData;
 import com.mbs.spark.util.DateUtils;
 import com.mbs.spark.util.NumberUtils;
-import com.mbs.spark.util.ParamUtils;
-import com.mbs.spark.util.SparkUtils;
 import com.mbs.spark.util.StringUtils;
 import com.mbs.spark.util.ValidUtils;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
@@ -35,6 +33,7 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.hive.HiveContext;
@@ -91,6 +90,8 @@ public class UserVisitSessionAnalyzeService {
 	Top10CategoryRepository top10CategoryRepository;
 	@Autowired
 	Top10SessionRepository top10SessionRepository;
+	@Autowired
+	SparkConfigurer sparkConfigurer;
 
 	public void main(String[] args) {
 		// 构建Spark上下文
@@ -106,8 +107,9 @@ public class UserVisitSessionAnalyzeService {
 				.set("spark.shuffle.io.retryWait", "60")
 				.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 				.registerKryoClasses(new Class[]{CategorySortKey.class, IntList.class});
-		SparkUtils.setMaster(conf);
-
+		if(sparkConfigurer.isLocal()) {
+			conf.setMaster("local");
+		}
 		/*
 		 * 比如，获取top10热门品类功能中，二次排序，自定义了一个Key
 		 * 那个key是需要在进行shuffle的时候，进行网络传输的，因此也是要求实现序列化的
@@ -120,11 +122,13 @@ public class UserVisitSessionAnalyzeService {
 		SQLContext sqlContext = getSQLContext(sc.sc());
 
 		// 生成模拟测试数据
-		SparkUtils.mockData(sc, sqlContext);
+		if(sparkConfigurer.isLocal()) {
+			MockData.mock(sc, sqlContext);
+		}
 
 		// 创建需要使用的DAO组件
 		// 首先得查询出来指定的任务，并获取任务的查询参数
-		long taskid = ParamUtils.getTaskIdFromArgs(args, Constants.SPARK_LOCAL_TASKID_SESSION);
+		long taskid = sparkConfigurer.isLocal() ? sparkConfigurer.getTaskSession() : Long.parseLong(args[0]);
 		Task task = taskRepository.findById(taskid).orElse(null);
 		if(task == null) {
 			System.out.println(new Date() + ": cannot find this task with id [" + taskid + "].");
@@ -146,7 +150,7 @@ public class UserVisitSessionAnalyzeService {
 		 * 重构完以后，actionRDD，就只在最开始，使用一次，用来生成以sessionid为key的RDD
 		 *
 		 */
-		JavaRDD<Row> actionRDD = SparkUtils.getActionRDDByDateRange(sqlContext, task.toParam());
+		JavaRDD<Row> actionRDD = getActionRDDByDateRange(sqlContext, task.toParam());
 		JavaPairRDD<String, Row> sessionid2actionRDD = getSessionid2ActionRDD(actionRDD);
 
 		/*
@@ -291,19 +295,37 @@ public class UserVisitSessionAnalyzeService {
 	}
 
 	/**
+	 * 获取指定日期范围内的用户行为数据RDD
+	 * @param sqlContext
+	 * @param param
+	 * @return
+	 */
+	public JavaRDD<Row> getActionRDDByDateRange(SQLContext sqlContext, Param param) {
+		String startDate = param.getStartDate();
+		String endDate = param.getEndDate();
+		String sql = "select * from user_visit_action where date>='" + startDate + "' and date<='" + endDate + "'";
+//				+ "and session_id not in('','','')"
+		DataFrame actionDF = sqlContext.sql(sql);
+		/*
+		 * 这里就很有可能发生上面说的问题
+		 * 比如说，Spark SQl默认就给第一个stage设置了20个task，但是根据你的数据量以及算法的复杂度
+		 * 实际上，你需要1000个task去并行执行
+		 *
+		 * 所以说，在这里，就可以对Spark SQL刚刚查询出来的RDD执行repartition重分区操作
+		 */
+//		return actionDF.javaRDD().repartition(1000);
+		return actionDF.javaRDD();
+	}
+
+	/**
 	 * 获取SQLContext
 	 * 如果是在本地测试环境的话，那么就生成SQLContext对象
 	 * 如果是在生产环境运行的话，那么就生成HiveContext对象
 	 * @param sc SparkContext
 	 * @return SQLContext
 	 */
-	private static SQLContext getSQLContext(SparkContext sc) {
-		boolean local = ConfigurationManager.getBoolean(Constants.SPARK_LOCAL);
-		if(local) {
-			return new SQLContext(sc);
-		} else {
-			return new HiveContext(sc);
-		}
+	private SQLContext getSQLContext(SparkContext sc) {
+		return sparkConfigurer.isLocal() ? new SQLContext(sc) : new HiveContext(sc);
 	}
 
 	/**
@@ -311,9 +333,8 @@ public class UserVisitSessionAnalyzeService {
 	 * @param sc
 	 * @param sqlContext
 	 */
-	private static void mockData(JavaSparkContext sc, SQLContext sqlContext) {
-		boolean local = ConfigurationManager.getBoolean(Constants.SPARK_LOCAL);
-		if(local) {
+	private void mockData(JavaSparkContext sc, SQLContext sqlContext) {
+		if(sparkConfigurer.isLocal()) {
 			MockData.mock(sc, sqlContext);
 		}
 	}

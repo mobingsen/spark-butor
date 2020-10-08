@@ -12,9 +12,10 @@ import org.springframework.stereotype.Component;
 @Getter
 @Component
 @ConfigurationProperties(prefix = "spark")
-public class SparkConfig {
+public class SparkConfigurer {
 
     private boolean local;
     private int taskSession;
     private int taskPage;
+    private int taskProduct;
 }
