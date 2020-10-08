@@ -4,7 +4,11 @@ import lombok.Getter;
 import lombok.Setter;
 import org.apache.spark.sql.Row;
 
+import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.Id;
+import javax.persistence.TableGenerator;
 
 /**
  * Session明细
@@ -14,6 +18,11 @@ import javax.persistence.Entity;
 @Entity
 public class SessionDetail {
 
+	@Id
+	@TableGenerator(name = "IdGen", table = "tb_gen", allocationSize = 1)
+	@GeneratedValue(generator = "IdGen")
+	@Column(name = "id")
+	private Long id;
 	private long taskId;
 	private long userId;
 	private String sessionId;

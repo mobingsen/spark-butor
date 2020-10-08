@@ -3,7 +3,11 @@ package com.mbs.spark.module.session.model;
 import lombok.Getter;
 import lombok.Setter;
 
+import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.Id;
+import javax.persistence.TableGenerator;
 
 /**
  * session聚合统计
@@ -13,6 +17,11 @@ import javax.persistence.Entity;
 @Entity
 public class SessionAggrStat {
 
+	@Id
+	@TableGenerator(name = "IdGen", table = "tb_gen", allocationSize = 1)
+	@GeneratedValue(generator = "IdGen")
+	@Column(name = "id")
+	private Long id;
 	private long taskId;
 	private long session_count;
 	private double visit_length_1s_3s_ratio;

@@ -83,7 +83,7 @@ public class SessionAggrStatAccumulator implements AccumulatorParam<String> {
 		String oldValue = StringUtils.getFieldFromConcatString(v1, "\\|", v2);
 		if(oldValue != null) {
 			// 将范围区间原有的值，累加1
-			int newValue = Integer.valueOf(oldValue) + 1;
+			int newValue = Integer.parseInt(oldValue) + 1;
 			// 使用StringUtils工具类，将v1中，v2对应的值，设置成新的累加后的值
 			return StringUtils.setFieldInConcatString(v1, "\\|", v2, String.valueOf(newValue));
 		}

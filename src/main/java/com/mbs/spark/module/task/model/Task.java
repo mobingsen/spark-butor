@@ -4,7 +4,11 @@ import com.google.gson.Gson;
 import lombok.Getter;
 import lombok.Setter;
 
+import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.Id;
+import javax.persistence.TableGenerator;
 import java.io.Serializable;
 
 /**
@@ -13,10 +17,12 @@ import java.io.Serializable;
 @Getter
 @Setter
 @Entity
-public class Task implements Serializable {
+public class Task {
 
-	private static final long serialVersionUID = 3518776796426921776L;
-
+	@Id
+	@TableGenerator(name = "IdGen", table = "tb_gen", allocationSize = 1)
+	@GeneratedValue(generator = "IdGen")
+	@Column(name = "id")
 	private long taskId;
 	private String taskName;
 	private String createTime;
