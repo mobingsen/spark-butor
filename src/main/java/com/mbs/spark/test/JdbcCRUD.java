@@ -23,7 +23,6 @@ import java.sql.Statement;
  * 主要同学们有基本的java编程基础、最最基础的hadoop基础知识，以及扎实的Spark技术功底
  * 我们就要保证同学们就可以学习这套高端、负责的Spark大型大数据项目实战课程
  *
-
  */
 @SuppressWarnings("unused")
 public class JdbcCRUD {

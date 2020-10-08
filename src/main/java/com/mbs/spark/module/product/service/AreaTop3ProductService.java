@@ -1,4 +1,4 @@
-package com.mbs.spark.module.product;
+package com.mbs.spark.module.product.service;
 
 import com.mbs.spark.conf.ConfigurationManager;
 import com.mbs.spark.constant.Constants;
@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
  * 各区域top3热门商品统计Spark作业
  */
 @Service
-public class AreaTop3ProductSpark {
+public class AreaTop3ProductService {
 
 	@Autowired
 	AreaTop3ProductRepository areaTop3ProductRepository;

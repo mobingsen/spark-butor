@@ -1,9 +1,11 @@
-package com.mbs.spark.module.session;
+package com.mbs.spark.module.session.service;
 
 import com.google.common.base.Optional;
 import com.mbs.spark.conf.ConfigurationManager;
 import com.mbs.spark.constant.Constants;
 import com.mbs.spark.module.product.model.Top10Category;
+import com.mbs.spark.module.session.CategorySortKey;
+import com.mbs.spark.module.session.SessionAggrStatAccumulator;
 import com.mbs.spark.module.session.model.SessionAggrStat;
 import com.mbs.spark.module.session.model.SessionDetail;
 import com.mbs.spark.module.session.model.SessionRandomExtract;
@@ -73,11 +75,9 @@ import java.util.Random;
  *
  * 这是spark本身提供的特性
  *
-
  */
-@SuppressWarnings("unused")
 @Service
-public class UserVisitSessionAnalyzeSpark {
+public class UserVisitSessionAnalyzeService {
 
 	@Autowired
 	SessionAggrStatRepository sessionAggrStatRepository;

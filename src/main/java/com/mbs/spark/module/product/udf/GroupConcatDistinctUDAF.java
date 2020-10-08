@@ -14,7 +14,6 @@ import org.apache.spark.sql.types.StructType;
  *
  * 技术点4：自定义UDAF聚合函数
  *
-
  */
 public class GroupConcatDistinctUDAF extends UserDefinedAggregateFunction {
 

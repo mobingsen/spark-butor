@@ -7,7 +7,6 @@ import org.apache.spark.sql.api.java.UDF2;
  *
  * 技术点：自定义UDF函数
  *
-
  */
 public class GetJsonObjectUDF implements UDF2<String, String, String> {
 

@@ -16,7 +16,6 @@ import com.mbs.spark.constant.Constants;
  *
  * Spark Core里面很实用的高端技术
  *
-
  */
 public class SessionAggrStatAccumulator implements AccumulatorParam<String> {
 

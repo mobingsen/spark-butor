@@ -16,7 +16,6 @@ import scala.math.Ordered;
  *
  * （自定义的二次排序key，必须要实现Serializable接口，表明是可以序列化的，负责会报错）
  *
-
  */
 public class CategorySortKey implements Ordered<CategorySortKey>, Serializable {
 

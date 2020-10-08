@@ -1,4 +1,4 @@
-package com.mbs.spark.module.ad;
+package com.mbs.spark.module.ad.service;
 
 import com.google.common.base.Optional;
 import com.mbs.spark.conf.KafkaConfig;
@@ -46,7 +46,7 @@ import java.util.stream.Collectors;
  * 广告点击流量实时统计
  */
 @Service
-public class AdClickRealTimeStatSpark {
+public class AdClickRealTimeStatService {
 
     @Autowired
     SparkConfig sparkConfig;
@@ -421,11 +421,11 @@ public class AdClickRealTimeStatSpark {
         // 然后呢，对上述格式的数据，执行updateStateByKey算子
         // spark streaming特有的一种算子，在spark集群内存中，维护一份key的全局状态
         JavaPairDStream<String, Long> mappedDStream = javaPairDStream
-                .mapToPair(AdClickRealTimeStatSpark::handleAdRealTimeLog);
+                .mapToPair(AdClickRealTimeStatService::handleAdRealTimeLog);
         // 在这个dstream中，就相当于，有每个batch rdd累加的各个key（各天各省份各城市各广告的点击次数）
         // 每次计算出最新的值，就在aggregatedDStream中的每个batch rdd中反应出来
         JavaPairDStream<String, Long> aggregatedDStream = mappedDStream
-                .updateStateByKey(AdClickRealTimeStatSpark::doNewestValue);
+                .updateStateByKey(AdClickRealTimeStatService::doNewestValue);
         // 将计算出来的最新结果，同步一份到mysql中，以便于j2ee系统使用
         aggregatedDStream.foreachRDD(rdd -> {
             rdd.foreachPartition(this::updateAdStat);

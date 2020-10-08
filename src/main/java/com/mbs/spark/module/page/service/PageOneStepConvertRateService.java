@@ -1,4 +1,4 @@
-package com.mbs.spark.module.page;
+package com.mbs.spark.module.page.service;
 
 import com.mbs.spark.constant.Constants;
 import com.mbs.spark.module.page.model.PageSplitConvertRate;
@@ -34,7 +34,7 @@ import java.util.stream.StreamSupport;
  * 页面单跳转化率模块
  */
 @Service
-public class PageOneStepConvertRateSpark {
+public class PageOneStepConvertRateService {
 
 	@Autowired
 	PageSplitConvertRateRepository pageSplitConvertRateRepository;
