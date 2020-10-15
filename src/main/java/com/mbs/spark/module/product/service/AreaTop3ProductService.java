@@ -62,67 +62,47 @@ public class AreaTop3ProductService {
 		SQLContext sqlContext = sparkConfigurer.isLocal() ? new SQLContext(sc.sc()) : new HiveContext(sc.sc());
 //		sqlContext.setConf("spark.sql.shuffle.partitions", "1000");
 //		sqlContext.setConf("spark.sql.autoBroadcastJoinThreshold", "20971520");
-
 		// 注册自定义函数
-		sqlContext.udf().register("concat_long_string",
-				new ConcatLongStringUDF(), DataTypes.StringType);
-		sqlContext.udf().register("get_json_object",
-				new GetJsonObjectUDF(), DataTypes.StringType);
-		sqlContext.udf().register("random_prefix",
-				new RandomPrefixUDF(), DataTypes.StringType);
-		sqlContext.udf().register("remove_random_prefix",
-				new RemoveRandomPrefixUDF(), DataTypes.StringType);
-		sqlContext.udf().register("group_concat_distinct",
-				new GroupConcatDistinctUDAF());
-
+		sqlContext.udf().register("concat_long_string", new ConcatLongStringUDF(), DataTypes.StringType);
+		sqlContext.udf().register("get_json_object", new GetJsonObjectUDF(), DataTypes.StringType);
+		sqlContext.udf().register("random_prefix", new RandomPrefixUDF(), DataTypes.StringType);
+		sqlContext.udf().register("remove_random_prefix", new RemoveRandomPrefixUDF(), DataTypes.StringType);
+		sqlContext.udf().register("group_concat_distinct", new GroupConcatDistinctUDAF());
 		// 准备模拟数据
 		if(sparkConfigurer.isLocal()) {
 			MockData.mock(sc, sqlContext);
 		}
-
 		// 获取命令行传入的taskid，查询对应的任务参数
 		long taskid = sparkConfigurer.isLocal() ? sparkConfigurer.getTaskProduct() : Long.parseLong(args[0]);
-		Task task = taskRepository.findById(taskid).orElse(null);
-
+		Task task = taskRepository.findById(taskid).get();
 		Param param = task.toParam();
 		String startDate = param.getStartDate();
 		String endDate = param.getEndDate();
-
 		// 查询用户指定日期范围内的点击行为数据（city_id，在哪个城市发生的点击行为）
 		// 技术点1：Hive数据源的使用
-		JavaPairRDD<Long, Row> cityid2clickActionRDD = getcityid2ClickActionRDDByDate(
-				sqlContext, startDate, endDate);
-		System.out.println("cityid2clickActionRDD: " + cityid2clickActionRDD.count());
-
+		JavaPairRDD<Long, Row> cityid2clickActionRDD = getcityid2ClickActionRDDByDate(sqlContext, startDate, endDate);
 		// 从MySQL中查询城市信息
 		// 技术点2：异构数据源之MySQL的使用
 		JavaPairRDD<Long, Row> cityid2cityInfoRDD = getcityid2CityInfoRDD(sqlContext);
-		System.out.println("cityid2cityInfoRDD: " + cityid2cityInfoRDD.count());
-
 		// 生成点击商品基础信息临时表
 		// 技术点3：将RDD转换为DataFrame，并注册临时表
-		generateTempClickProductBasicTable(sqlContext,
-				cityid2clickActionRDD, cityid2cityInfoRDD);
-
+		generateTempClickProductBasicTable(sqlContext, cityid2clickActionRDD, cityid2cityInfoRDD);
 		// 生成各区域各商品点击次数的临时表
 		generateTempAreaPrdocutClickCountTable(sqlContext);
-
 		// 生成包含完整商品信息的各区域各商品点击次数的临时表
 		generateTempAreaFullProductClickCountTable(sqlContext);
-
 		// 使用开窗函数获取各个区域内点击次数排名前3的热门商品
 		JavaRDD<Row> areaTop3ProductRDD = getAreaTop3ProductRDD(sqlContext);
-		System.out.println("areaTop3ProductRDD: " + areaTop3ProductRDD.count());
-
 		// 这边的写入mysql和之前不太一样
 		// 因为实际上，就这个业务需求而言，计算出来的最终数据量是比较小的
 		// 总共就不到10个区域，每个区域还是top3热门商品，总共最后数据量也就是几十个
 		// 所以可以直接将数据collect()到本地
 		// 用批量插入的方式，一次性插入mysql即可
 		List<Row> rows = areaTop3ProductRDD.collect();
-		System.out.println("rows: " + rows.size());
-		persistAreaTop3Product(taskid, rows);
-
+		List<AreaTop3Product> productList = rows.stream()
+				.map(row -> AreaTop3Product.ctor(taskid, row))
+				.collect(Collectors.toList());
+		areaTop3ProductRepository.saveAll(productList);
 		sc.close();
 	}
 
@@ -133,15 +113,13 @@ public class AreaTop3ProductService {
 	 * @param endDate 截止日期
 	 * @return 点击行为数据
 	 */
-	private static JavaPairRDD<Long, Row> getcityid2ClickActionRDDByDate(
+	private JavaPairRDD<Long, Row> getcityid2ClickActionRDDByDate(
 			SQLContext sqlContext, String startDate, String endDate) {
 		// 从user_visit_action中，查询用户访问行为数据
 		// 第一个限定：click_product_id，限定为不为空的访问行为，那么就代表着点击行为
 		// 第二个限定：在用户指定的日期范围内的数据
 		String sql =
-				"SELECT "
-					+ "city_id,"
-					+ "click_product_id product_id "
+				"SELECT city_id, click_product_id product_id "
 				+ "FROM user_visit_action "
 				+ "WHERE click_product_id IS NOT NULL "
 				+ "AND date>='" + startDate + "' "
@@ -182,7 +160,7 @@ public class AreaTop3ProductService {
 	 * @param cityid2clickActionRDD
 	 * @param cityid2cityInfoRDD
 	 */
-	private static void generateTempClickProductBasicTable(
+	private void generateTempClickProductBasicTable(
 			SQLContext sqlContext,
 			JavaPairRDD<Long, Row> cityid2clickActionRDD,
 			JavaPairRDD<Long, Row> cityid2cityInfoRDD) {
@@ -231,7 +209,7 @@ public class AreaTop3ProductService {
 	 * 生成各区域各商品点击次数临时表
 	 * @param sqlContext
 	 */
-	private static void generateTempAreaPrdocutClickCountTable(
+	private void generateTempAreaPrdocutClickCountTable(
 			SQLContext sqlContext) {
 		// 按照area和product_id两个字段进行分组
 		// 计算出各区域各商品的点击次数
@@ -290,7 +268,7 @@ public class AreaTop3ProductService {
 	 * 生成区域商品点击次数临时表（包含了商品的完整信息）
 	 * @param sqlContext
 	 */
-	private static void generateTempAreaFullProductClickCountTable(SQLContext sqlContext) {
+	private void generateTempAreaFullProductClickCountTable(SQLContext sqlContext) {
 		// 将之前得到的各区域各商品点击次数表，product_id
 		// 去关联商品信息表，product_id，product_name和product_status
 		// product_status要特殊处理，0，1，分别代表了自营和第三方的商品，放在了一个json串里面
@@ -375,24 +353,20 @@ public class AreaTop3ProductService {
 	 * @param sqlContext
 	 * @return
 	 */
-	private static JavaRDD<Row> getAreaTop3ProductRDD(SQLContext sqlContext) {
+	private JavaRDD<Row> getAreaTop3ProductRDD(SQLContext sqlContext) {
 		// 技术点：开窗函数
-
 		// 使用开窗函数先进行一个子查询
 		// 按照area进行分组，给每个分组内的数据，按照点击次数降序排序，打上一个组内的行号
 		// 接着在外层查询中，过滤出各个组内的行号排名前3的数据
 		// 其实就是咱们的各个区域下top3热门商品
-
 		// 华北、华东、华南、华中、西北、西南、东北
 		// A级：华北、华东
 		// B级：华南、华中
 		// C级：西北、西南
 		// D级：东北
-
 		// case when
 		// 根据多个条件，不同的条件对应不同的值
 		// case when then ... when then ... else ... end
-
 		String sql =
 				"SELECT "
 					+ "area,"
@@ -419,10 +393,7 @@ public class AreaTop3ProductService {
 					+ "FROM tmp_area_fullprod_click_count "
 				+ ") t "
 				+ "WHERE rank<=3";
-
-		DataFrame df = sqlContext.sql(sql);
-
-		return df.javaRDD();
+		return sqlContext.sql(sql).javaRDD();
 	}
 
 	/**

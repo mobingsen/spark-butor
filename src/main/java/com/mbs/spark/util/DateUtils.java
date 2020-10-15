@@ -10,12 +10,9 @@ import java.util.Date;
  */
 public class DateUtils {
 
-	public static final SimpleDateFormat TIME_FORMAT =
-			new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-	public static final SimpleDateFormat DATE_FORMAT =
-			new SimpleDateFormat("yyyy-MM-dd");
-	public static final SimpleDateFormat DATEKEY_FORMAT =
-			new SimpleDateFormat("yyyyMMdd");
+	public static final SimpleDateFormat TIME_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+	public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
+	public static final SimpleDateFormat DATEKEY_FORMAT = new SimpleDateFormat("yyyyMMdd");
 
 	/**
 	 * 判断一个时间是否在另一个时间之前
@@ -136,7 +133,7 @@ public class DateUtils {
 	 */
 	public static Date parseTime(String time) {
 		try {
-			return TIME_FORMAT.parse(time);
+			return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(time);
 		} catch (ParseException e) {
 			e.printStackTrace();
 		}

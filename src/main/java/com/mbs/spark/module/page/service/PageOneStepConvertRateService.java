@@ -24,9 +24,9 @@ import org.springframework.stereotype.Service;
 import scala.Tuple2;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -79,8 +79,19 @@ public class PageOneStepConvertRateService {
 		}
 
 		// 4、查询指定日期范围内的用户访问行为数据
-		JavaRDD<Row> actionRDD = getActionRDDByDateRange(sqlContext, task.toParam());
-
+		String startDate = task.toParam().getStartDate();
+		String endDate = task.toParam().getEndDate();
+		String sql = "select * from user_visit_action where date>='" + startDate + "' and date<='" + endDate + "'";
+//				+ "and session_id not in('','','')"
+		/*
+		 * 这里就很有可能发生上面说的问题
+		 * 比如说，Spark SQl默认就给第一个stage设置了20个task，但是根据你的数据量以及算法的复杂度
+		 * 实际上，你需要1000个task去并行执行
+		 *
+		 * 所以说，在这里，就可以对Spark SQL刚刚查询出来的RDD执行repartition重分区操作
+		 */
+//		sqlContext.sql(sql).javaRDD().repartition(1000);
+		JavaRDD<Row> actionRDD =  sqlContext.sql(sql).javaRDD();
 		// 对用户访问行为数据做一个映射，将其映射为<sessionid,访问行为>的格式
 		// 咱们的用户访问页面切片的生成，是要基于每个session的访问数据，来进行生成的
 		// 脱离了session，生成的页面访问切片，是么有意义的
@@ -124,7 +135,6 @@ public class PageOneStepConvertRateService {
 		String endDate = param.getEndDate();
 		String sql = "select * from user_visit_action where date>='" + startDate + "' and date<='" + endDate + "'";
 //				+ "and session_id not in('','','')"
-		DataFrame actionDF = sqlContext.sql(sql);
 		/*
 		 * 这里就很有可能发生上面说的问题
 		 * 比如说，Spark SQl默认就给第一个stage设置了20个task，但是根据你的数据量以及算法的复杂度
@@ -132,8 +142,8 @@ public class PageOneStepConvertRateService {
 		 *
 		 * 所以说，在这里，就可以对Spark SQL刚刚查询出来的RDD执行repartition重分区操作
 		 */
-//		return actionDF.javaRDD().repartition(1000);
-		return actionDF.javaRDD();
+//		return sqlContext.sql(sql).javaRDD().repartition(1000);
+		return sqlContext.sql(sql).javaRDD();
 	}
 
 	/**
@@ -162,11 +172,11 @@ public class PageOneStepConvertRateService {
 		return sessionid2actionsRDD.flatMapToPair(tuple -> generateAndMatchPage(targetPageFlowBroadcast, tuple));
 	}
 
-	private static Iterable<Tuple2<String, Integer>> generateAndMatchPage(Broadcast<String> targetPageFlowBroadcast, Tuple2<String, Iterable<Row>> tuple) {
+	private static Iterable<Tuple2<String, Integer>> generateAndMatchPage(Broadcast<String> targetPageFlowBroadcast,
+																		  Tuple2<String, Iterable<Row>> tuple) {
 		// 定义返回list
 		List<Tuple2<String, Integer>> list = new ArrayList<>();
 		// 获取到当前session的访问行为的迭代器
-		Iterator<Row> iterator = tuple._2.iterator();
 		// 获取使用者指定的页面流
 		// 使用者指定的页面流，1,2,3,4,5,6,7
 		// 1->2的转化率是多少？2->3的转化率是多少？
@@ -181,22 +191,16 @@ public class PageOneStepConvertRateService {
 		// 比如，3->5->4->10->7
 		// 3->4->5->7->10
 		// 排序
-
-		List<Row> rows = new ArrayList<Row>();
-		while(iterator.hasNext()) {
-			rows.add(iterator.next());
-		}
-
-		rows.sort((o1, o2) -> {
-			String actionTime1 = o1.getString(4);
-			String actionTime2 = o2.getString(4);
-
-			Date date1 = DateUtils.parseTime(actionTime1);
-			Date date2 = DateUtils.parseTime(actionTime2);
-
+		Comparator<Row> comparator = (o1, o2) -> {
+			Date date1 = DateUtils.parseTime(o1.getString(4));
+			Date date2 = DateUtils.parseTime(o2.getString(4));
+			assert date1 != null;
+			assert date2 != null;
 			return (int) (date1.getTime() - date2.getTime());
-		});
-
+		};
+		List<Row> rows = StreamSupport.stream(tuple._2.spliterator(), false)
+				.sorted(comparator)
+				.collect(Collectors.toList());
 		// 页面切片的生成，以及页面流的匹配
 		Long lastPageId = null;
 
@@ -212,7 +216,6 @@ public class PageOneStepConvertRateService {
 			// 3,5,2,1,8,9
 			// lastPageId=3
 			// 5，切片，3_5
-
 			String pageSplit = lastPageId + "_" + pageid;
 
 			// 对这个切片判断一下，是否在用户指定的页面流中
@@ -223,7 +226,7 @@ public class PageOneStepConvertRateService {
 				String targetPageSplit = targetPages[i - 1] + "_" + targetPages[i];
 
 				if(pageSplit.equals(targetPageSplit)) {
-					list.add(new Tuple2<String, Integer>(pageSplit, 1));
+					list.add(new Tuple2<>(pageSplit, 1));
 					break;
 				}
 			}
@@ -258,7 +261,7 @@ public class PageOneStepConvertRateService {
 	 * @param startPagePv 起始页面pv
 	 * @return
 	 */
-	private static Map<String, Double> computePageSplitConvertRate(
+	private Map<String, Double> computePageSplitConvertRate(
 			Param param,
 			Map<String, Object> pageSplitPvMap,
 			long startPagePv) {
@@ -278,7 +281,7 @@ public class PageOneStepConvertRateService {
 			String targetPageSplit = targetPages[i - 1] + "_" + targetPages[i];
 			long targetPageSplitPv = Long.parseLong(String.valueOf(pageSplitPvMap.get(targetPageSplit)));
 
-			double convertRate = 0.0;
+			double convertRate;
 
 			if(i == 1) {
 				convertRate = NumberUtils.formatDouble(
@@ -300,20 +303,12 @@ public class PageOneStepConvertRateService {
 	 * 持久化转化率
 	 * @param convertRateMap
 	 */
-	private void persistConvertRate(long taskid, Map<String, Double> convertRateMap) {
-		StringBuilder buffer = new StringBuilder("");
-
-		for(Map.Entry<String, Double> convertRateEntry : convertRateMap.entrySet()) {
-			String pageSplit = convertRateEntry.getKey();
-			double convertRate = convertRateEntry.getValue();
-			buffer.append(pageSplit).append("=").append(convertRate).append("|");
-		}
-
-		String convertRate = buffer.toString();
-		convertRate = convertRate.substring(0, convertRate.length() - 1);
-
+	private void persistConvertRate(long taskId, Map<String, Double> convertRateMap) {
+		String convertRate = convertRateMap.entrySet().stream()
+				.map(entry -> entry.getKey() + "=" + entry.getValue())
+				.collect(Collectors.joining("|"));
 		PageSplitConvertRate pageSplitConvertRate = new PageSplitConvertRate();
-		pageSplitConvertRate.setTaskId(taskid);
+		pageSplitConvertRate.setTaskId(taskId);
 		pageSplitConvertRate.setConvertRate(convertRate);
 		pageSplitConvertRateRepository.save(pageSplitConvertRate);
 	}
