@@ -40,7 +40,9 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Spliterators;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 /**
  * 广告点击流量实时统计
@@ -64,7 +66,6 @@ public class AdClickRealTimeStatService {
     AdUserClickCountRepository adUserClickCountRepository;
 
     public void main(String[] args) {
-        // 构建Spark Streaming上下文
         SparkConf conf = new SparkConf()
                 .setMaster("local[2]")
                 .setAppName("AdClickRealTimeStatSpark");
@@ -76,43 +77,36 @@ public class AdClickRealTimeStatService {
         // spark streaming的上下文是构建JavaStreamingContext对象
         // 而不是像之前的JavaSparkContext、SQLContext/HiveContext
         // 传入的第一个参数，和之前的spark上下文一样，也是SparkConf对象；第二个参数则不太一样
-
         // 第二个参数是spark streaming类型作业比较有特色的一个参数
         // 实时处理batch的interval
         // spark streaming，每隔一小段时间，会去收集一次数据源（kafka）中的数据，做成一个batch
         // 每次都是处理一个batch中的数据
-
         // 通常来说，batch interval，就是指每隔多少时间收集一次数据源中的数据，然后进行处理
         // 一遍spark streaming的应用，都是设置数秒到数十秒（很少会超过1分钟）
-
         // 咱们这里项目中，就设置5秒钟的batch interval
         // 每隔5秒钟，咱们的spark streaming作业就会收集最近5秒内的数据源接收过来的数据
-        JavaStreamingContext jssc = new JavaStreamingContext(conf, Durations.seconds(5));
-        jssc.checkpoint("hdfs://192.168.1.105:9000/streaming_checkpoint");
-
+        JavaStreamingContext context = new JavaStreamingContext(conf, Durations.seconds(5));
+        context.checkpoint("hdfs://192.168.1.105:9000/streaming_checkpoint");
         // 正式开始进行代码的编写
         // 实现咱们需要的实时计算的业务逻辑和功能
-
         // 创建针对Kafka数据来源的输入DStream（离线流，代表了一个源源不断的数据来源，抽象）
         // 选用kafka direct api（很多好处，包括自己内部自适应调整每次接收数据量的特性，等等）
-
         // 构建kafka参数map
         // 主要要放置的就是，你要连接的kafka集群的地址（broker集群的地址列表）
         // 基于kafka direct api模式，构建出了针对kafka集群中指定topic的输入DStream
         // 两个值，val1，val2；val1没有什么特殊的意义；val2中包含了kafka topic中的一条一条的实时日志数据
-        JavaPairInputDStream<String, String> adRealTimeLogDStream = KafkaUtils.createDirectStream(
-                jssc,
+        JavaPairInputDStream<String, String> inputDStream = KafkaUtils.createDirectStream(
+                context,
                 String.class,
                 String.class,
                 StringDecoder.class,
                 StringDecoder.class,
                 kafkaConfig.builderParams(),
-                kafkaConfig.getTopicSet());
-
-//		adRealTimeLogDStream.repartition(1000);
-
+                kafkaConfig.getTopicSet()
+        );
+//		inputDStream.repartition(1000);
         // 根据动态黑名单进行数据过滤
-        JavaPairDStream<String, String> filteredAdRealTimeLogDStream = adRealTimeLogDStream
+        JavaPairDStream<String, String> filteredAdRealTimeLogDStream = inputDStream
                 .transformToPair(this::filterByBlacklist);
         // 生成动态黑名单
         generateDynamicBlacklist(filteredAdRealTimeLogDStream);
@@ -129,12 +123,12 @@ public class AdClickRealTimeStatService {
         // 统计的非常细了
         // 我们每次都可以看到每个广告，最近一小时内，每分钟的点击量
         // 每支广告的点击趋势
-        calculateAdClickCountByWindow(adRealTimeLogDStream);
+        calculateAdClickCountByWindow(inputDStream);
 
         // 构建完spark streaming上下文之后，记得要进行上下文的启动、等待执行结束、关闭
-        jssc.start();
-        jssc.awaitTermination();
-        jssc.close();
+        context.start();
+        context.awaitTermination();
+        context.close();
     }
 
     @SuppressWarnings("unused")
@@ -181,7 +175,6 @@ public class AdClickRealTimeStatService {
      * 刚刚接受到原始的用户点击行为日志之后
      * 根据mysql中的动态黑名单，进行实时的黑名单过滤（黑名单用户的点击行为，直接过滤掉，不要了）
      * 使用transform算子（将dstream中的每个batch RDD进行处理，转换为任意的其他RDD，功能很强大）
-     *
      * @param rdd
      * @return
      */
@@ -189,19 +182,18 @@ public class AdClickRealTimeStatService {
     private JavaPairRDD<String, String> filterByBlacklist(JavaPairRDD<String, String> rdd) {
         // 首先，从mysql中查询所有黑名单用户，将其转换为一个rdd
         List<Tuple2<Long, Boolean>> tuples = adBlackListRepository.findAll().stream()
-                .map(adBlacklist -> new Tuple2<>(adBlacklist.getUserId(), true))
-                .collect(Collectors.toList());
+                .map(adBlacklist -> new Tuple2<>(adBlacklist.getUserId(), true)).collect(Collectors.toList());
         JavaSparkContext sc = new JavaSparkContext(rdd.context());
         JavaPairRDD<Long, Boolean> blacklistRDD = sc.parallelizePairs(tuples);
         return rdd
-                // 将原始数据rdd映射成<userid, tuple2<string, string>>
+                // 将原始数据rdd映射成<userId, tuple2<string, string>>
                 .mapToPair(tuple -> new Tuple2<>(Long.parseLong(tuple._2.split(" ")[3]), tuple))
                 // 将原始日志数据rdd，与黑名单rdd，进行左外连接
-                // 如果说原始日志的userid，没有在对应的黑名单中，join不到，左外连接
+                // 如果说原始日志的userId，没有在对应的黑名单中，join不到，左外连接
                 // 用inner join，内连接，会导致数据丢失
                 .leftOuterJoin(blacklistRDD)
-                // 如果这个值存在，那么说明原始日志中的userid，join到了某个黑名单用户
-                .filter(tuple -> !(tuple._2._2.isPresent() && tuple._2._2.get()))
+                // 如果这个值存在，那么说明原始日志中的userId，join到了某个黑名单用户
+                .filter(tuple -> !(tuple._2._2.or(false)))
                 .mapToPair(tuple -> tuple._2._1);
     }
 
@@ -222,7 +214,6 @@ public class AdClickRealTimeStatService {
                 // 针对处理后的日志格式，执行reduceByKey算子即可
                 // （每个batch中）每天每个用户对每个广告的点击量
                 .reduceByKey(Long::sum);
-
         // 到这里为止，获取到了什么数据呢？
         // dailyUserAdClickCountDStream DStream
         // 源源不断的，每个5s的batch中，当天每个用户对每支广告的点击次数
@@ -231,13 +222,11 @@ public class AdClickRealTimeStatService {
             rdd.foreachPartition(this::updateAdUserClickCount);
             return null;
         });
-
         // 现在我们在mysql里面，已经有了累计的每天各用户对各广告的点击量
         // 遍历每个batch中的所有记录，对每条记录都要去查询一下，这一天这个用户对这个广告的累计点击量是多少
         // 从mysql中查询
         // 查询出来的结果，如果是100，如果你发现某个用户某天对某个广告的点击量已经大于等于100了
         // 那么就判定这个用户就是黑名单用户，就写入mysql的表中，持久化
-
         // 对batch中的数据，去查询mysql中的点击次数，使用哪个dstream呢？
         // dailyUserAdClickCountDStream
         // 为什么用这个batch？因为这个batch是聚合过的数据，已经按照yyyyMMdd_userid_adid进行过聚合了
@@ -246,14 +235,12 @@ public class AdClickRealTimeStatService {
         // 一石二鸟，一举两得
         dailyUserAdClickCountDStream
                 .filter(this::checkClickCount)
-
                 // blacklistDStream
                 // 里面的每个batch，其实就是都是过滤出来的已经在某天对某个广告点击量超过100的用户
                 // 遍历这个dstream中的每个rdd，然后将黑名单用户增加到mysql中
                 // 这里一旦增加以后，在整个这段程序的前面，会加上根据黑名单动态过滤用户的逻辑
                 // 我们可以认为，一旦用户被拉入黑名单之后，以后就不会再出现在这里了
                 // 所以直接插入mysql即可
-
                 // 我们有没有发现这里有一个小小的问题？
                 // blacklistDStream中，可能有userid是重复的，如果直接这样插入的话
                 // 那么是不是会发生，插入重复的黑明单用户
@@ -262,28 +249,22 @@ public class AdClickRealTimeStatService {
                 // 20151220_10001_10002 100
                 // 20151220_10001_10003 100
                 // 10001这个userid就重复了
-
                 // 实际上，是要通过对dstream执行操作，对其中的rdd中的userid进行全局的去重
                 .map(tuple -> Long.valueOf(tuple._1.split("_")[1]))
-
                 .transform((Function<JavaRDD<Long>, JavaRDD<Long>>) JavaRDD::distinct)
-
                 // 到这一步为止，distinctBlacklistUseridDStream
                 // 每一个rdd，只包含了userid，而且还进行了全局的去重，保证每一次过滤出来的黑名单用户都没有重复的
                 .foreachRDD(rdd -> {
                     rdd.foreachPartition(this::insertAdBlacklist);
                     return null;
                 });
-
         // 特别前面三个模块
         // 我们测试到后面的时候，其实会不断修改程序，有些程序，是跟前面的模块公用的
         // 到目前为止呢，我们只是说，保证，每次写完一个模块，测试一下
         // 我们是保证每个模块测试都是可以通过的
         // 但是呢，还暂时不能保证现在之前所有的模块都是可以跑通的
-
         // 特别提醒一下，在最后一个模块写完以后
         // 我呢，会对整个程序，每个模块都进行一下测试，会把程序调节到所有模块依次执行，全部可以跑通
-
         // 我们之前第一个和第三个模块，都写了一些解决数据倾斜的解决方案，以及代码
         // 那些少量的解决数据倾斜问题的代码，咱们其实一直都没有测试过
         // 不敢保证那些代码是可以跑通的
@@ -292,41 +273,29 @@ public class AdClickRealTimeStatService {
     }
 
     private void insertAdBlacklist(Iterator<Long> iterator) {
-        List<AdBlacklist> adBlacklists = new ArrayList<>();
-        while (iterator.hasNext()) {
-            long userid = iterator.next();
-            AdBlacklist adBlacklist = new AdBlacklist();
-            adBlacklist.setUserId(userid);
-            adBlacklists.add(adBlacklist);
-        }
-        adBlackListRepository.saveAll(adBlacklists);
-
+        List<AdBlacklist> blacklists = StreamSupport
+                .stream(Spliterators.spliteratorUnknownSize(iterator, 0), false)
+                .map(AdBlacklist::ctor).collect(Collectors.toList());
+        adBlackListRepository.saveAll(blacklists);
         // 到此为止，我们其实已经实现了动态黑名单了
-
         // 1、计算出每个batch中的每天每个用户对每个广告的点击量，并持久化到mysql中
-
         // 2、依据上述计算出来的数据，对每个batch中的按date、userid、adid聚合的数据
         // 都要遍历一遍，查询一下，对应的累计的点击次数，如果超过了100，那么就认定为黑名单
         // 然后对黑名单用户进行去重，去重后，将黑名单用户，持久化插入到mysql中
         // 所以说mysql中的ad_blacklist表中的黑名单用户，就是动态地实时地增长的
         // 所以说，mysql中的ad_blacklist表，就可以认为是一张动态黑名单
-
         // 3、基于上述计算出来的动态黑名单，在最一开始，就对每个batch中的点击行为
         // 根据动态黑名单进行过滤
         // 把黑名单中的用户的点击行为，直接过滤掉
-
         // 动态黑名单机制，就完成了
-
         // 第一套spark课程，spark streaming阶段，有个小案例，也是黑名单
         // 但是那只是从实际项目中抽取出来的案例而已
         // 作为技术的学习，（案例），包装（基于你公司的一些业务），项目，找工作
         // 锻炼和实战自己spark技术，没问题的
         // 但是，那还不是真真正正的项目
-
         // 第一个spark课程：scala、spark core、源码、调优、spark sql、spark streaming
         // 总共加起来（scala+spark）的案例，将近上百个
         // 搞通透，精通以后，1~2年spark相关经验，没问题
-
         // 第二个spark课程（项目）：4个模块，涵盖spark core、spark sql、spark streaming
         // 企业级性能调优、troubleshooting、数据倾斜解决方案、实际的数据项目开发流程
         // 大数据项目架构
@@ -425,7 +394,7 @@ public class AdClickRealTimeStatService {
         // 在这个dstream中，就相当于，有每个batch rdd累加的各个key（各天各省份各城市各广告的点击次数）
         // 每次计算出最新的值，就在aggregatedDStream中的每个batch rdd中反应出来
         JavaPairDStream<String, Long> aggregatedDStream = mappedDStream
-                .updateStateByKey(AdClickRealTimeStatService::doNewestValue);
+                .updateStateByKey(this::doNewestValue);
         // 将计算出来的最新结果，同步一份到mysql中，以便于j2ee系统使用
         aggregatedDStream.foreachRDD(rdd -> {
             rdd.foreachPartition(this::updateAdStat);
@@ -447,54 +416,34 @@ public class AdClickRealTimeStatService {
         return new Tuple2<>(key, 1L);
     }
 
-    @SuppressWarnings({"OptionalUsedAsFieldOrParameterType", "Guava"})
-    private static Optional<Long> doNewestValue(List<Long> values, Optional<Long> optional) {
+    @SuppressWarnings({"Guava", "OptionalUsedAsFieldOrParameterType"})
+    private Optional<Long> doNewestValue(List<Long> values, Optional<Long> optional) {
         // 举例来说
         // 对于每个key，都会调用一次这个方法
         // 比如key是<20151201_Jiangsu_Nanjing_10001,1>，就会来调用一次这个方法7
         // 10个
         // values，(1,1,1,1,1,1,1,1,1,1)
         // 首先根据optional判断，之前这个key，是否有对应的状态
-        long clickCount = 0L;
         // 如果说，之前是存在这个状态的，那么就以之前的状态作为起点，进行值的累加
-        if (optional.isPresent()) {
-            clickCount = optional.get();
-        }
         // values，代表了，batch rdd中，每个key对应的所有的值
-        for (Long value : values) {
-            clickCount += value;
-        }
-        return Optional.of(clickCount);
+        Long reduce = values.stream().reduce(optional.or(0L), Long::sum);
+        return Optional.of(reduce);
     }
 
     private void updateAdStat(Iterator<Tuple2<String, Long>> iterator) {
-        List<AdStat> adStats = new ArrayList<>();
-        while (iterator.hasNext()) {
-            Tuple2<String, Long> tuple = iterator.next();
-            String[] keySplited = tuple._1.split("_");
-            String date = keySplited[0];
-            String province = keySplited[1];
-            String city = keySplited[2];
-            long adid = Long.parseLong(keySplited[3]);
-            long clickCount = tuple._2;
-            AdStat adStat = new AdStat();
-            adStat.setDate(date);
-            adStat.setProvince(province);
-            adStat.setCity(city);
-            adStat.setAdId(adid);
-            adStat.setClickCount(clickCount);
-            adStats.add(adStat);
-        }
-        adStatRepository.saveAll(adStats);
+        List<AdStat> stats = StreamSupport
+                .stream(Spliterators.spliteratorUnknownSize(iterator, 0), false)
+                .map(AdStat::ctor).collect(Collectors.toList());
+        adStatRepository.saveAll(stats);
     }
 
     /**
      * 计算每天各省份的top3热门广告
      *
-     * @param adRealTimeStatDStream
+     * @param stream
      */
-    private void calculateProvinceTop3Ad(JavaPairDStream<String, Long> adRealTimeStatDStream) {
-        adRealTimeStatDStream
+    private void calculateProvinceTop3Ad(JavaPairDStream<String, Long> stream) {
+        stream
                 // 每一个batch rdd，都代表了最新的全量的每天各省份各城市各广告的点击量
                 .transform(this::calculateProvinceTop)
                 // 每次都是刷新出来各个省份最热门的top3广告
@@ -542,13 +491,10 @@ public class AdClickRealTimeStatService {
     }
 
     private JavaRDD<Row> calculateProvinceTop(JavaPairRDD<String, Long> rdd) {
-        JavaPairRDD<String, Long> mappedRDD = rdd
-                // <yyyyMMdd_province_city_adid, clickCount>
-                // <yyyyMMdd_province_adid, clickCount>
-                // 计算出每天各省份各广告的点击量
-                .mapToPair(this::calculatePerDayClickCount);
-        JavaPairRDD<String, Long> dailyAdClickCountByProvinceRDD = mappedRDD.reduceByKey(Long::sum);
-        JavaRDD<Row> rowsRDD = dailyAdClickCountByProvinceRDD
+        JavaRDD<Row> javaRDD = rdd
+                // 计算出每天各省份各广告的点击量 <yyyyMMdd_province_city_adid, clickCount> ==> <yyyyMMdd_province_adid, clickCount>
+                .mapToPair(this::calculatePerDayClickCount)
+                .reduceByKey(Long::sum)
                 // 将dailyAdClickCountByProvinceRDD转换为DataFrame
                 // 注册为一张临时表
                 // 使用Spark SQL，通过开窗函数，获取到各省份的top3热门广告
@@ -559,7 +505,7 @@ public class AdClickRealTimeStatService {
                 DataTypes.createStructField("ad_id", DataTypes.LongType, true),
                 DataTypes.createStructField("click_count", DataTypes.LongType, true)));
         HiveContext sqlContext = new HiveContext(rdd.context());
-        sqlContext.createDataFrame(rowsRDD, schema)
+        sqlContext.createDataFrame(javaRDD, schema)
                 // 将dailyAdClickCountByProvinceDF，注册成一张临时表
                 .registerTempTable("tmp_daily_ad_click_count_by_prov");
         return sqlContext
@@ -584,22 +530,21 @@ public class AdClickRealTimeStatService {
     }
 
     private Row getDailyAdClickCountRow(Tuple2<String, Long> tuple) {
-        String[] keySplited = tuple._1.split("_");
-        String datekey = keySplited[0];
-        String province = keySplited[1];
-        long adid = Long.parseLong(keySplited[2]);
+        String[] keyArr = tuple._1.split("_");
+        String date = DateUtils.formatDate(DateUtils.parseDateKey(keyArr[0]));
+        String province = keyArr[1];
+        long adId = Long.parseLong(keyArr[2]);
         long clickCount = tuple._2;
-        String date = DateUtils.formatDate(DateUtils.parseDateKey(datekey));
-        return RowFactory.create(date, province, adid, clickCount);
+        return RowFactory.create(date, province, adId, clickCount);
     }
 
     private Tuple2<String, Long> calculatePerDayClickCount(Tuple2<String, Long> tuple) {
-        String[] keySplited = tuple._1.split("_");
-        String date = keySplited[0];
-        String province = keySplited[1];
-        long adid = Long.parseLong(keySplited[3]);
+        String[] keyArr = tuple._1.split("_");
+        String date = keyArr[0];
+        String province = keyArr[1];
+        long adId = Long.parseLong(keyArr[3]);
         long clickCount = tuple._2;
-        String key = date + "_" + province + "_" + adid;
+        String key = date + "_" + province + "_" + adId;
         return new Tuple2<>(key, clickCount);
     }
 

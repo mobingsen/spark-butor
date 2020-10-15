@@ -24,4 +24,10 @@ public class AdBlacklist {
 	private Long id;
 	@Column
 	private long userId;
+
+	public static AdBlacklist ctor(long userId) {
+		AdBlacklist blacklist = new AdBlacklist();
+		blacklist.setUserId(userId);
+		return blacklist;
+	}
 }

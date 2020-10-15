@@ -2,6 +2,7 @@ package com.mbs.spark.module.ad.model;
 
 import lombok.Getter;
 import lombok.Setter;
+import scala.Tuple2;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -27,4 +28,20 @@ public class AdStat {
 	private String city;
 	private long adId;
 	private long clickCount;
+
+	public static AdStat ctor(Tuple2<String, Long> tuple) {
+		String[] keyArr = tuple._1.split("_");
+		String date = keyArr[0];
+		String province = keyArr[1];
+		String city = keyArr[2];
+		long adId = Long.parseLong(keyArr[3]);
+		long clickCount = tuple._2;
+		AdStat adStat = new AdStat();
+		adStat.setDate(date);
+		adStat.setProvince(province);
+		adStat.setCity(city);
+		adStat.setAdId(adId);
+		adStat.setClickCount(clickCount);
+		return adStat;
+	}
 }
