@@ -40,6 +40,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -134,16 +135,13 @@ public class AdClickRealTimeStatService {
     @SuppressWarnings("unused")
     private void testDriverHA() {
         final String checkpointDir = "hdfs://192.168.1.105:9090/streaming_checkpoint";
-
         JavaStreamingContextFactory contextFactory = () -> {
             SparkConf conf = new SparkConf()
                     .setMaster("local[2]")
                     .setAppName("AdClickRealTimeStatSpark");
-
             JavaStreamingContext jssc = new JavaStreamingContext(
                     conf, Durations.seconds(5));
             jssc.checkpoint(checkpointDir);
-
             JavaPairInputDStream<String, String> adRealTimeLogDStream = KafkaUtils.createDirectStream(
                     jssc,
                     String.class,
@@ -152,7 +150,6 @@ public class AdClickRealTimeStatService {
                     StringDecoder.class,
                     kafkaConfig.builderParams(),
                     kafkaConfig.getTopicSet());
-
             JavaPairDStream<String, String> filteredAdRealTimeLogDStream = adRealTimeLogDStream
                     .transformToPair(this::filterByBlacklist);
             generateDynamicBlacklist(filteredAdRealTimeLogDStream);
@@ -160,12 +157,9 @@ public class AdClickRealTimeStatService {
                     filteredAdRealTimeLogDStream);
             calculateProvinceTop3Ad(adRealTimeStatDStream);
             calculateAdClickCountByWindow(adRealTimeLogDStream);
-
             return jssc;
         };
-
-        JavaStreamingContext context = JavaStreamingContext.getOrCreate(
-                checkpointDir, contextFactory);
+        JavaStreamingContext context = JavaStreamingContext.getOrCreate(checkpointDir, contextFactory);
         context.start();
         context.awaitTermination();
     }
@@ -274,7 +268,7 @@ public class AdClickRealTimeStatService {
 
     private void insertAdBlacklist(Iterator<Long> iterator) {
         List<AdBlacklist> blacklists = StreamSupport
-                .stream(Spliterators.spliteratorUnknownSize(iterator, 0), false)
+                .stream(Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED), false)
                 .map(AdBlacklist::ctor).collect(Collectors.toList());
         adBlackListRepository.saveAll(blacklists);
         // 到此为止，我们其实已经实现了动态黑名单了
@@ -321,25 +315,22 @@ public class AdClickRealTimeStatService {
         // 对每个分区的数据就去获取一次连接对象
         // 每次都是从连接池中获取，而不是每次都创建
         // 写数据库操作，性能已经提到最高了
-        List<AdUserClickCount> adUserClickCounts = new ArrayList<>();
-        while (iterator.hasNext()) {
-            Tuple2<String, Long> tuple = iterator.next();
-
-            String[] keySplited = tuple._1.split("_");
-            String date = DateUtils.formatDate(DateUtils.parseDateKey(keySplited[0]));
-            // yyyy-MM-dd
-            long userid = Long.parseLong(keySplited[1]);
-            long adid = Long.parseLong(keySplited[2]);
-            long clickCount = tuple._2;
-
-            AdUserClickCount adUserClickCount = new AdUserClickCount();
-            adUserClickCount.setDate(date);
-            adUserClickCount.setUserId(userid);
-            adUserClickCount.setAdId(adid);
-            adUserClickCount.setClickCount(clickCount);
-
-            adUserClickCounts.add(adUserClickCount);
-        }
+        List<AdUserClickCount> adUserClickCounts = StreamSupport
+                .stream(Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED), false)
+                .map(tuple -> {
+                    String[] tupleKey = tuple._1.split("_");
+                    String date = DateUtils.formatDate(DateUtils.parseDateKey(tupleKey[0]));
+                    // yyyy-MM-dd
+                    long userId = Long.parseLong(tupleKey[1]);
+                    long adId = Long.parseLong(tupleKey[2]);
+                    long clickCount = tuple._2;
+                    AdUserClickCount adUserClickCount = new AdUserClickCount();
+                    adUserClickCount.setDate(date);
+                    adUserClickCount.setUserId(userId);
+                    adUserClickCount.setAdId(adId);
+                    adUserClickCount.setClickCount(clickCount);
+                    return adUserClickCount;
+                }).collect(Collectors.toList());
         adUserClickCountRepository.saveAll(adUserClickCounts);
     }
 
@@ -432,7 +423,7 @@ public class AdClickRealTimeStatService {
 
     private void updateAdStat(Iterator<Tuple2<String, Long>> iterator) {
         List<AdStat> stats = StreamSupport
-                .stream(Spliterators.spliteratorUnknownSize(iterator, 0), false)
+                .stream(Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED), false)
                 .map(AdStat::ctor).collect(Collectors.toList());
         adStatRepository.saveAll(stats);
     }
@@ -455,39 +446,24 @@ public class AdClickRealTimeStatService {
     }
 
     private void updateAdProvinceTop(Iterator<Row> iterator) {
-        List<AdProvinceTop3> adProvinceTop3s = new ArrayList<>();
-        while (iterator.hasNext()) {
-            Row row = iterator.next();
-            String date = row.getString(0);
-            String province = row.getString(1);
-            long adid = row.getLong(2);
-            long clickCount = row.getLong(3);
-            AdProvinceTop3 adProvinceTop3 = new AdProvinceTop3();
-            adProvinceTop3.setDate(date);
-            adProvinceTop3.setProvince(province);
-            adProvinceTop3.setAdId(adid);
-            adProvinceTop3.setClickCount(clickCount);
-            adProvinceTop3s.add(adProvinceTop3);
-        }
-        // 先做一次去重（date_province）
-        List<String> dateProvinces = new ArrayList<>();
-        for(AdProvinceTop3 adProvinceTop3 : adProvinceTop3s) {
-            String date = adProvinceTop3.getDate();
-            String province = adProvinceTop3.getProvince();
-            String key = date + "_" + province;
-            if(!dateProvinces.contains(key)) {
-                dateProvinces.add(key);
-            }
-        }
-        // 根据去重后的date和province，进行批量删除操作
-        for(String dateProvince : dateProvinces) {
-            String[] dateProvinceSplited = dateProvince.split("_");
-            String date = dateProvinceSplited[0];
-            String province = dateProvinceSplited[1];
-            adProvinceTopRepository.deleteByDateAndProvince(date, province);
-        }
+        List<AdProvinceTop3> tops = StreamSupport
+                .stream(Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED), false)
+                .map(row -> {
+                    String date = row.getString(0);
+                    String province = row.getString(1);
+                    long adId = row.getLong(2);
+                    long clickCount = row.getLong(3);
+                    AdProvinceTop3 adProvinceTop3 = new AdProvinceTop3();
+                    adProvinceTop3.setDate(date);
+                    adProvinceTop3.setProvince(province);
+                    adProvinceTop3.setAdId(adId);
+                    adProvinceTop3.setClickCount(clickCount);
+                    return adProvinceTop3;
+                }).collect(Collectors.toList());
+        tops.stream().map(top -> top.getDate() + "_" + top.getProvince()).distinct()
+                .forEach(str -> adProvinceTopRepository.deleteByDateAndProvince(str.split("_")[0], str.split("_")[1]));
         // 批量插入传入进来的所有数据
-        adProvinceTopRepository.saveAll(adProvinceTop3s);
+        adProvinceTopRepository.saveAll(tops);
     }
 
     private JavaRDD<Row> calculateProvinceTop(JavaPairRDD<String, Long> rdd) {
@@ -581,25 +557,25 @@ public class AdClickRealTimeStatService {
     }
 
     private void updateAdClickTrend(Iterator<Tuple2<String, Long>> iterator) {
-        List<AdClickTrend> adClickTrends = new ArrayList<>();
-        while (iterator.hasNext()) {
-            Tuple2<String, Long> tuple = iterator.next();
-            String[] keySplited = tuple._1.split("_");
-            // yyyyMMddHHmm
-            String dateMinute = keySplited[0];
-            long adid = Long.parseLong(keySplited[1]);
-            long clickCount = tuple._2;
-            String date = DateUtils.formatDate(DateUtils.parseDateKey(dateMinute.substring(0, 8)));
-            String hour = dateMinute.substring(8, 10);
-            String minute = dateMinute.substring(10);
-            AdClickTrend adClickTrend = new AdClickTrend();
-            adClickTrend.setDate(date);
-            adClickTrend.setHour(hour);
-            adClickTrend.setMinute(minute);
-            adClickTrend.setAdId(adid);
-            adClickTrend.setClickCount(clickCount);
-            adClickTrends.add(adClickTrend);
-        }
+        List<AdClickTrend> adClickTrends = StreamSupport
+                .stream(Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED), false)
+                .map(tuple -> {
+                    String[] keySplited = tuple._1.split("_");
+                    // yyyyMMddHHmm
+                    String dateMinute = keySplited[0];
+                    long adid = Long.parseLong(keySplited[1]);
+                    long clickCount = tuple._2;
+                    String date = DateUtils.formatDate(DateUtils.parseDateKey(dateMinute.substring(0, 8)));
+                    String hour = dateMinute.substring(8, 10);
+                    String minute = dateMinute.substring(10);
+                    AdClickTrend adClickTrend = new AdClickTrend();
+                    adClickTrend.setDate(date);
+                    adClickTrend.setHour(hour);
+                    adClickTrend.setMinute(minute);
+                    adClickTrend.setAdId(adid);
+                    adClickTrend.setClickCount(clickCount);
+                    return adClickTrend;
+                }).collect(Collectors.toList());
         adClickTrendRepository.saveAll(adClickTrends);
     }
 }

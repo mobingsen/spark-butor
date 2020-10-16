@@ -139,7 +139,7 @@ public class AreaTop3ProductService {
 		String url = jdbcConfigurer.getUrl();
 		String user = jdbcConfigurer.getUsername();
 		String password = jdbcConfigurer.getPassword();
-		Map<String, String> options = new HashMap<String, String>();
+		Map<String, String> options = new HashMap<>();
 		options.put("url", url);
 		options.put("dbtable", "city_info");
 		options.put("user", user);
@@ -160,14 +160,10 @@ public class AreaTop3ProductService {
 	 * @param cityid2clickActionRDD
 	 * @param cityid2cityInfoRDD
 	 */
-	private void generateTempClickProductBasicTable(
-			SQLContext sqlContext,
-			JavaPairRDD<Long, Row> cityid2clickActionRDD,
-			JavaPairRDD<Long, Row> cityid2cityInfoRDD) {
+	private void generateTempClickProductBasicTable(SQLContext sqlContext,
+			JavaPairRDD<Long, Row> cityid2clickActionRDD, JavaPairRDD<Long, Row> cityid2cityInfoRDD) {
 		// 执行join操作，进行点击行为数据和城市数据的关联
-		JavaPairRDD<Long, Tuple2<Row, Row>> joinedRDD =
-				cityid2clickActionRDD.join(cityid2cityInfoRDD);
-
+		JavaPairRDD<Long, Tuple2<Row, Row>> joinedRDD = cityid2clickActionRDD.join(cityid2cityInfoRDD);
 		// 将上面的JavaPairRDD，转换成一个JavaRDD<Row>（才能将RDD转换为DataFrame）
 		JavaRDD<Row> mappedRDD = joinedRDD.map(tuple -> {
 					long cityid = tuple._1;
@@ -178,29 +174,22 @@ public class AreaTop3ProductService {
 					String area = cityInfo.getString(2);
 					return RowFactory.create(cityid, cityName, area, productid);
 				});
-
 		// 基于JavaRDD<Row>的格式，就可以将其转换为DataFrame
 		List<StructField> structFields = new ArrayList<>();
 		structFields.add(DataTypes.createStructField("city_id", DataTypes.LongType, true));
 		structFields.add(DataTypes.createStructField("city_name", DataTypes.StringType, true));
 		structFields.add(DataTypes.createStructField("area", DataTypes.StringType, true));
 		structFields.add(DataTypes.createStructField("product_id", DataTypes.LongType, true));
-
 		// 1 北京
 		// 2 上海
 		// 1 北京
 		// group by area,product_id
 		// 1:北京,2:上海
-
 		// 两个函数
 		// UDF：concat2()，将两个字段拼接起来，用指定的分隔符
 		// UDAF：group_concat_distinct()，将一个分组中的多个字段值，用逗号拼接起来，同时进行去重
-
 		StructType schema = DataTypes.createStructType(structFields);
-
 		DataFrame df = sqlContext.createDataFrame(mappedRDD, schema);
-		System.out.println("tmp_click_product_basic: " + df.count());
-
 		// 将DataFrame中的数据，注册成临时表（tmp_click_product_basic）
 		df.registerTempTable("tmp_click_product_basic");
 	}
@@ -209,8 +198,7 @@ public class AreaTop3ProductService {
 	 * 生成各区域各商品点击次数临时表
 	 * @param sqlContext
 	 */
-	private void generateTempAreaPrdocutClickCountTable(
-			SQLContext sqlContext) {
+	private void generateTempAreaPrdocutClickCountTable(SQLContext sqlContext) {
 		// 按照area和product_id两个字段进行分组
 		// 计算出各区域各商品的点击次数
 		// 可以获取到每个area下的每个product_id的城市信息拼接起来的串
@@ -222,45 +210,8 @@ public class AreaTop3ProductService {
 					+ "group_concat_distinct(concat_long_string(city_id,city_name,':')) city_infos "
 				+ "FROM tmp_click_product_basic "
 				+ "GROUP BY area,product_id ";
-
-		/*
-		 * 双重group by
-		 */
-
-//		String _sql =
-//				"SELECT "
-//					+ "product_id_area,"
-//					+ "count(click_count) click_count,"
-//					+ "group_concat_distinct(city_infos) city_infos "
-//				+ "FROM ( "
-//					+ "SELECT "
-//						+ "remove_random_prefix(product_id_area) product_id_area,"
-//						+ "click_count,"
-//						+ "city_infos "
-//					+ "FROM ( "
-//						+ "SELECT "
-//							+ "product_id_area,"
-//							+ "count(*) click_count,"
-//							+ "group_concat_distinct(concat_long_string(city_id,city_name,':')) city_infos "
-//						+ "FROM ( "
-//							+ "SELECT "
-//								+ "random_prefix(concat_long_string(product_id,area,':'), 10) product_id_area,"
-//								+ "city_id,"
-//								+ "city_name "
-//							+ "FROM tmp_click_product_basic "
-//						+ ") t1 "
-//						+ "GROUP BY product_id_area "
-//					+ ") t2 "
-//				+ ") t3 "
-//				+ "GROUP BY product_id_area ";
-
-		// 使用Spark SQL执行这条SQL语句
 		DataFrame df = sqlContext.sql(sql);
-
-		System.out.println("tmp_area_product_click_count: " + df.count());
-
-		// 再次将查询出来的数据注册为一个临时表
-		// 各区域各商品的点击次数（以及额外的城市列表）
+		// 再次将查询出来的数据注册为一个临时表 各区域各商品的点击次数（以及额外的城市列表）
 		df.registerTempTable("tmp_area_product_click_count");
 	}
 
@@ -275,13 +226,10 @@ public class AreaTop3ProductService {
 		// get_json_object()函数，可以从json串中获取指定的字段的值
 		// if()函数，判断，如果product_status是0，那么就是自营商品；如果是1，那么就是第三方商品
 		// area, product_id, click_count, city_infos, product_name, product_status
-
 		// 为什么要费时费力，计算出来商品经营类型
 		// 你拿到到了某个区域top3热门的商品，那么其实这个商品是自营的，还是第三方的
 		// 其实是很重要的一件事
-
 		// 技术点：内置if函数的使用
-
 		String sql =
 				"SELECT "
 					+ "tapcc.area,"
@@ -292,59 +240,7 @@ public class AreaTop3ProductService {
 					+ "if(get_json_object(pi.extend_info,'product_status')='0','Self','Third Party') product_status "
 				+ "FROM tmp_area_product_click_count tapcc "
 				+ "JOIN product_info pi ON tapcc.product_id=pi.product_id ";
-
-//		JavaRDD<Row> rdd = sqlContext.sql("select * from product_info").javaRDD();
-//		JavaRDD<Row> flattedRDD = rdd.flatMap(new FlatMapFunction<Row, Row>() {
-//
-//			private static final long serialVersionUID = 1L;
-//
-//			@Override
-//			public Iterable<Row> call(Row row) throws Exception {
-//				List<Row> list = new ArrayList<Row>();
-//
-//				for(int i = 0; i < 10; i ++) {
-//					long productid = row.getLong(0);
-//					String _productid = i + "_" + productid;
-//
-//					Row _row = RowFactory.create(_productid, row.get(1), row.get(2));
-//					list.add(_row);
-//				}
-//
-//				return list;
-//			}
-//
-//		});
-//
-//		StructType _schema = DataTypes.createStructType(Arrays.asList(
-//				DataTypes.createStructField("product_id", DataTypes.StringType, true),
-//				DataTypes.createStructField("product_name", DataTypes.StringType, true),
-//				DataTypes.createStructField("product_status", DataTypes.StringType, true)));
-//
-//		DataFrame _df = sqlContext.createDataFrame(flattedRDD, _schema);
-//		_df.registerTempTable("tmp_product_info");
-//
-//		String _sql =
-//				"SELECT "
-//					+ "tapcc.area,"
-//					+ "remove_random_prefix(tapcc.product_id) product_id,"
-//					+ "tapcc.click_count,"
-//					+ "tapcc.city_infos,"
-//					+ "pi.product_name,"
-//					+ "if(get_json_object(pi.extend_info,'product_status')=0,'自营商品','第三方商品') product_status "
-//				+ "FROM ("
-//					+ "SELECT "
-//						+ "area,"
-//						+ "random_prefix(product_id, 10) product_id,"
-//						+ "click_count,"
-//						+ "city_infos "
-//					+ "FROM tmp_area_product_click_count "
-//				+ ") tapcc "
-//				+ "JOIN tmp_product_info pi ON tapcc.product_id=pi.product_id ";
-
 		DataFrame df = sqlContext.sql(sql);
-
-		System.out.println("tmp_area_fullprod_click_count: " + df.count());
-
 		df.registerTempTable("tmp_area_fullprod_click_count");
 	}
 
@@ -354,8 +250,7 @@ public class AreaTop3ProductService {
 	 * @return
 	 */
 	private JavaRDD<Row> getAreaTop3ProductRDD(SQLContext sqlContext) {
-		// 技术点：开窗函数
-		// 使用开窗函数先进行一个子查询
+		// 技术点：开窗函数 使用开窗函数先进行一个子查询
 		// 按照area进行分组，给每个分组内的数据，按照点击次数降序排序，打上一个组内的行号
 		// 接着在外层查询中，过滤出各个组内的行号排名前3的数据
 		// 其实就是咱们的各个区域下top3热门商品
@@ -394,16 +289,5 @@ public class AreaTop3ProductService {
 				+ ") t "
 				+ "WHERE rank<=3";
 		return sqlContext.sql(sql).javaRDD();
-	}
-
-	/**
-	 * 将计算出来的各区域top3热门商品写入MySQL中
-	 * @param rows
-	 */
-	private void persistAreaTop3Product(long taskid, List<Row> rows) {
-		List<AreaTop3Product> productList = rows.stream()
-				.map(row -> AreaTop3Product.ctor(taskid, row))
-				.collect(Collectors.toList());
-		areaTop3ProductRepository.saveAll(productList);
 	}
 }

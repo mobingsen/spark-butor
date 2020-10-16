@@ -151,8 +151,7 @@ public class PageOneStepConvertRateService {
 	 * @param actionRDD 用户访问行为RDD
 	 * @return <sessionid,用户访问行为>格式的数据
 	 */
-	private static JavaPairRDD<String, Row> getSessionid2actionRDD(
-			JavaRDD<Row> actionRDD) {
+	private static JavaPairRDD<String, Row> getSessionid2actionRDD(JavaRDD<Row> actionRDD) {
 		return actionRDD.mapToPair(row -> new Tuple2<>(row.getString(2), row));
 	}
 
@@ -163,10 +162,8 @@ public class PageOneStepConvertRateService {
 	 * @param param
 	 * @return
 	 */
-	private static JavaPairRDD<String, Integer> generateAndMatchPageSplit(
-			JavaSparkContext sc,
-			JavaPairRDD<String, Iterable<Row>> sessionid2actionsRDD,
-			Param param) {
+	private static JavaPairRDD<String, Integer> generateAndMatchPageSplit(JavaSparkContext sc,
+			JavaPairRDD<String, Iterable<Row>> sessionid2actionsRDD, Param param) {
 		String targetPageFlow = param.getTargetPageFlow();
 		final Broadcast<String> targetPageFlowBroadcast = sc.broadcast(targetPageFlow);
 		return sessionid2actionsRDD.flatMapToPair(tuple -> generateAndMatchPage(targetPageFlowBroadcast, tuple));
@@ -243,8 +240,7 @@ public class PageOneStepConvertRateService {
 	 * @param sessionid2actionsRDD
 	 * @return
 	 */
-	private static long getStartPagePv(Param param,
-									   JavaPairRDD<String, Iterable<Row>> sessionid2actionsRDD) {
+	private static long getStartPagePv(Param param, JavaPairRDD<String, Iterable<Row>> sessionid2actionsRDD) {
 		String targetPageFlow = param.getTargetPageFlow();
 		final long startPageId = Long.parseLong(targetPageFlow.split(",")[0]);
 		return sessionid2actionsRDD
@@ -261,16 +257,10 @@ public class PageOneStepConvertRateService {
 	 * @param startPagePv 起始页面pv
 	 * @return
 	 */
-	private Map<String, Double> computePageSplitConvertRate(
-			Param param,
-			Map<String, Object> pageSplitPvMap,
-			long startPagePv) {
+	private Map<String, Double> computePageSplitConvertRate(Param param, Map<String, Object> pageSplitPvMap, long startPagePv) {
 		Map<String, Double> convertRateMap = new HashMap<>();
-
 		String[] targetPages = param.getTargetPageFlow().split(",");
-
 		long lastPageSplitPv = 0L;
-
 		// 3,5,2,4,6
 		// 3_5
 		// 3_5 pv / 3 pv
@@ -280,22 +270,15 @@ public class PageOneStepConvertRateService {
 		for(int i = 1; i < targetPages.length; i++) {
 			String targetPageSplit = targetPages[i - 1] + "_" + targetPages[i];
 			long targetPageSplitPv = Long.parseLong(String.valueOf(pageSplitPvMap.get(targetPageSplit)));
-
 			double convertRate;
-
 			if(i == 1) {
-				convertRate = NumberUtils.formatDouble(
-						(double)targetPageSplitPv / (double)startPagePv, 2);
+				convertRate = NumberUtils.formatDouble((double)targetPageSplitPv / (double)startPagePv, 2);
 			} else {
-				convertRate = NumberUtils.formatDouble(
-						(double)targetPageSplitPv / (double)lastPageSplitPv, 2);
+				convertRate = NumberUtils.formatDouble((double)targetPageSplitPv / (double)lastPageSplitPv, 2);
 			}
-
 			convertRateMap.put(targetPageSplit, convertRate);
-
 			lastPageSplitPv = targetPageSplitPv;
 		}
-
 		return convertRateMap;
 	}
 
