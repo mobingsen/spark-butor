@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -74,7 +75,11 @@ public class AreaTop3ProductService {
 		}
 		// 获取命令行传入的taskid，查询对应的任务参数
 		long taskid = sparkConfigurer.isLocal() ? sparkConfigurer.getTaskProduct() : Long.parseLong(args[0]);
-		Task task = taskRepository.findById(taskid).get();
+		Optional<Task> taskOptional = taskRepository.findById(taskid);
+		if (!taskOptional.isPresent()) {
+			return;
+		}
+		Task task = taskOptional.get();
 		Param param = task.toParam();
 		String startDate = param.getStartDate();
 		String endDate = param.getEndDate();
@@ -113,8 +118,7 @@ public class AreaTop3ProductService {
 	 * @param endDate 截止日期
 	 * @return 点击行为数据
 	 */
-	private JavaPairRDD<Long, Row> getcityid2ClickActionRDDByDate(
-			SQLContext sqlContext, String startDate, String endDate) {
+	private JavaPairRDD<Long, Row> getcityid2ClickActionRDDByDate(SQLContext sqlContext, String startDate, String endDate) {
 		// 从user_visit_action中，查询用户访问行为数据
 		// 第一个限定：click_product_id，限定为不为空的访问行为，那么就代表着点击行为
 		// 第二个限定：在用户指定的日期范围内的数据

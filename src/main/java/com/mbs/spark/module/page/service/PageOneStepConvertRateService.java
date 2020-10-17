@@ -23,6 +23,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import scala.Tuple2;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -171,14 +173,12 @@ public class PageOneStepConvertRateService {
 
 	private static Iterable<Tuple2<String, Integer>> generateAndMatchPage(Broadcast<String> targetPageFlowBroadcast,
 																		  Tuple2<String, Iterable<Row>> tuple) {
-		// 定义返回list
 		List<Tuple2<String, Integer>> list = new ArrayList<>();
 		// 获取到当前session的访问行为的迭代器
 		// 获取使用者指定的页面流
 		// 使用者指定的页面流，1,2,3,4,5,6,7
 		// 1->2的转化率是多少？2->3的转化率是多少？
 		String[] targetPages = targetPageFlowBroadcast.value().split(",");
-
 		// 这里，我们拿到的session的访问行为，默认情况下是乱序的
 		// 比如说，正常情况下，我们希望拿到的数据，是按照时间顺序排序的
 		// 但是问题是，默认是不排序的
@@ -200,37 +200,30 @@ public class PageOneStepConvertRateService {
 				.collect(Collectors.toList());
 		// 页面切片的生成，以及页面流的匹配
 		Long lastPageId = null;
-
 		for(Row row : rows) {
 			long pageid = row.getLong(3);
-
 			if(lastPageId == null) {
 				lastPageId = pageid;
 				continue;
 			}
-
 			// 生成一个页面切片
 			// 3,5,2,1,8,9
 			// lastPageId=3
 			// 5，切片，3_5
 			String pageSplit = lastPageId + "_" + pageid;
-
 			// 对这个切片判断一下，是否在用户指定的页面流中
 			for(int i = 1; i < targetPages.length; i++) {
 				// 比如说，用户指定的页面流是3,2,5,8,1
 				// 遍历的时候，从索引1开始，就是从第二个页面开始
 				// 3_2
 				String targetPageSplit = targetPages[i - 1] + "_" + targetPages[i];
-
 				if(pageSplit.equals(targetPageSplit)) {
 					list.add(new Tuple2<>(pageSplit, 1));
 					break;
 				}
 			}
-
 			lastPageId = pageid;
 		}
-
 		return list;
 	}
 
@@ -258,24 +251,20 @@ public class PageOneStepConvertRateService {
 	 * @return
 	 */
 	private Map<String, Double> computePageSplitConvertRate(Param param, Map<String, Object> pageSplitPvMap, long startPagePv) {
-		Map<String, Double> convertRateMap = new HashMap<>();
 		String[] targetPages = param.getTargetPageFlow().split(",");
-		long lastPageSplitPv = 0L;
 		// 3,5,2,4,6
 		// 3_5
 		// 3_5 pv / 3 pv
 		// 5_2 rate = 5_2 pv / 3_5 pv
-
+		long lastPageSplitPv = 0L;
+		Map<String, Double> convertRateMap = new HashMap<>();
 		// 通过for循环，获取目标页面流中的各个页面切片（pv）
 		for(int i = 1; i < targetPages.length; i++) {
 			String targetPageSplit = targetPages[i - 1] + "_" + targetPages[i];
 			long targetPageSplitPv = Long.parseLong(String.valueOf(pageSplitPvMap.get(targetPageSplit)));
-			double convertRate;
-			if(i == 1) {
-				convertRate = NumberUtils.formatDouble((double)targetPageSplitPv / (double)startPagePv, 2);
-			} else {
-				convertRate = NumberUtils.formatDouble((double)targetPageSplitPv / (double)lastPageSplitPv, 2);
-			}
+			double convertRate = new BigDecimal(targetPageSplitPv)
+					.divide(BigDecimal.valueOf(i == 1 ? startPagePv : lastPageSplitPv), 2, RoundingMode.HALF_UP)
+					.doubleValue();
 			convertRateMap.put(targetPageSplit, convertRate);
 			lastPageSplitPv = targetPageSplitPv;
 		}

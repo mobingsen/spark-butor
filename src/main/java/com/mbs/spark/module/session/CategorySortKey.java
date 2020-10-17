@@ -38,24 +38,18 @@ public class CategorySortKey implements Ordered<CategorySortKey>, Serializable {
 		} else if(clickCount == other.getClickCount() &&
 				orderCount > other.getOrderCount()) {
 			return true;
-		} else if(clickCount == other.getClickCount() &&
+		} else return clickCount == other.getClickCount() &&
 				orderCount == other.getOrderCount() &&
-				payCount > other.getPayCount()) {
-			return true;
-		}
-		return false;
+				payCount > other.getPayCount();
 	}
 
 	@Override
 	public boolean $greater$eq(CategorySortKey other) {
 		if($greater(other)) {
 			return true;
-		} else if(clickCount == other.getClickCount() &&
+		} else return clickCount == other.getClickCount() &&
 				orderCount == other.getOrderCount() &&
-				payCount == other.getPayCount()) {
-			return true;
-		}
-		return false;
+				payCount == other.getPayCount();
 	}
 
 	@Override
@@ -65,24 +59,18 @@ public class CategorySortKey implements Ordered<CategorySortKey>, Serializable {
 		} else if(clickCount == other.getClickCount() &&
 				orderCount < other.getOrderCount()) {
 			return true;
-		} else if(clickCount == other.getClickCount() &&
+		} else return clickCount == other.getClickCount() &&
 				orderCount == other.getOrderCount() &&
-				payCount < other.getPayCount()) {
-			return true;
-		}
-		return false;
+				payCount < other.getPayCount();
 	}
 
 	@Override
 	public boolean $less$eq(CategorySortKey other) {
 		if($less(other)) {
 			return true;
-		} else if(clickCount == other.getClickCount() &&
+		} else return clickCount == other.getClickCount() &&
 				orderCount == other.getOrderCount() &&
-				payCount == other.getPayCount()) {
-			return true;
-		}
-		return false;
+				payCount == other.getPayCount();
 	}
 
 	@Override

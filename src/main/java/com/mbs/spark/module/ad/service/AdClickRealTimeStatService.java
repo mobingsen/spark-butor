@@ -112,7 +112,7 @@ public class AdClickRealTimeStatService {
         // 生成动态黑名单
         generateDynamicBlacklist(filteredAdRealTimeLogDStream);
 
-        // 业务功能一：计算广告点击流量实时统计结果（yyyyMMdd_province_city_adid,clickCount）
+        // 业务功能一：计算广告点击流量实时统计结果（yyyyMMdd_province_city_adId,clickCount）
         // 最粗
         JavaPairDStream<String, Long> adRealTimeStatDStream = calculateRealTimeStat(filteredAdRealTimeLogDStream);
 
@@ -198,12 +198,12 @@ public class AdClickRealTimeStatService {
      */
     private void generateDynamicBlacklist(JavaPairDStream<String, String> filteredAdRealTimeLogDStream) {
         // 一条一条的实时日志
-        // timestamp province city userid adid
+        // timestamp province city userid adId
         // 某个时间点 某个省份 某个城市 某个用户 某个广告
         // 计算出每5个秒内的数据中，每天每个用户每个广告的点击量
         JavaPairDStream<String, Long> dailyUserAdClickCountDStream = filteredAdRealTimeLogDStream
                 // 通过对原始实时日志的处理
-                // 将日志的格式处理成<yyyyMMdd_userid_adid, 1L>格式
+                // 将日志的格式处理成<yyyyMMdd_userid_adId, 1L>格式
                 .mapToPair(this::doDateUserIdAdIdAndOneLong)
                 // 针对处理后的日志格式，执行reduceByKey算子即可
                 // （每个batch中）每天每个用户对每个广告的点击量
@@ -211,7 +211,7 @@ public class AdClickRealTimeStatService {
         // 到这里为止，获取到了什么数据呢？
         // dailyUserAdClickCountDStream DStream
         // 源源不断的，每个5s的batch中，当天每个用户对每支广告的点击次数
-        // <yyyyMMdd_userid_adid, clickCount>
+        // <yyyyMMdd_userid_adId, clickCount>
         dailyUserAdClickCountDStream.foreachRDD(rdd -> {
             rdd.foreachPartition(this::updateAdUserClickCount);
             return null;
@@ -223,7 +223,7 @@ public class AdClickRealTimeStatService {
         // 那么就判定这个用户就是黑名单用户，就写入mysql的表中，持久化
         // 对batch中的数据，去查询mysql中的点击次数，使用哪个dstream呢？
         // dailyUserAdClickCountDStream
-        // 为什么用这个batch？因为这个batch是聚合过的数据，已经按照yyyyMMdd_userid_adid进行过聚合了
+        // 为什么用这个batch？因为这个batch是聚合过的数据，已经按照yyyyMMdd_userid_adId进行过聚合了
         // 比如原始数据可能是一个batch有一万条，聚合过后可能只有五千条
         // 所以选用这个聚合后的dstream，既可以满足咱们的需求，而且呢，还可以尽量减少要处理的数据量
         // 一石二鸟，一举两得
@@ -239,7 +239,7 @@ public class AdClickRealTimeStatService {
                 // blacklistDStream中，可能有userid是重复的，如果直接这样插入的话
                 // 那么是不是会发生，插入重复的黑明单用户
                 // 我们在插入前要进行去重
-                // yyyyMMdd_userid_adid
+                // yyyyMMdd_userid_adId
                 // 20151220_10001_10002 100
                 // 20151220_10001_10003 100
                 // 10001这个userid就重复了
@@ -273,7 +273,7 @@ public class AdClickRealTimeStatService {
         adBlackListRepository.saveAll(blacklists);
         // 到此为止，我们其实已经实现了动态黑名单了
         // 1、计算出每个batch中的每天每个用户对每个广告的点击量，并持久化到mysql中
-        // 2、依据上述计算出来的数据，对每个batch中的按date、userid、adid聚合的数据
+        // 2、依据上述计算出来的数据，对每个batch中的按date、userid、adId聚合的数据
         // 都要遍历一遍，查询一下，对应的累计的点击次数，如果超过了100，那么就认定为黑名单
         // 然后对黑名单用户进行去重，去重后，将黑名单用户，持久化插入到mysql中
         // 所以说mysql中的ad_blacklist表中的黑名单用户，就是动态地实时地增长的
@@ -298,13 +298,13 @@ public class AdClickRealTimeStatService {
 
     private Boolean checkClickCount(Tuple2<String, Long> tuple) {
         String key = tuple._1;
-        String[] keySplited = key.split("_");
+        String[] keyArr = key.split("_");
         // yyyyMMdd -> yyyy-MM-dd
-        String date = DateUtils.formatDate(DateUtils.parseDateKey(keySplited[0]));
-        long userid = Long.parseLong(keySplited[1]);
-        long adid = Long.parseLong(keySplited[2]);
+        String date = DateUtils.formatDate(DateUtils.parseDateKey(keyArr[0]));
+        long userId = Long.parseLong(keyArr[1]);
+        long adId = Long.parseLong(keyArr[2]);
         // 从mysql中查询指定日期指定用户对指定广告的点击量
-        int clickCount = adUserClickCountRepository.findClickCountByMultiKey(date, userid, adid);
+        int clickCount = adUserClickCountRepository.findClickCountByMultiKey(date, userId, adId);
         // 判断，如果点击量大于等于100，ok，那么不好意思，你就是黑名单用户
         // 那么就拉入黑名单，返回true
         // 反之，如果点击量小于100的，那么就暂时不要管它了
@@ -337,20 +337,14 @@ public class AdClickRealTimeStatService {
     private Tuple2<String, Long> doDateUserIdAdIdAndOneLong(Tuple2<String, String> tuple) {
         // 从tuple中获取到每一条原始的实时日志
         String log = tuple._2;
-        String[] logSplited = log.split(" ");
-
-        // 提取出日期（yyyyMMdd）、userid、adid
-        String timestamp = logSplited[0];
+        String[] logArr = log.split(" ");
+        // 提取出日期（yyyyMMdd）、userId、adId
+        String timestamp = logArr[0];
         Date date = new Date(Long.parseLong(timestamp));
-        String datekey = DateUtils.formatDateKey(date);
-
-        long userid = Long.parseLong(logSplited[3]);
-        long adid = Long.parseLong(logSplited[4]);
-
-        // 拼接key
-        String key = datekey + "_" + userid + "_" + adid;
-
-        return new Tuple2<>(key, 1L);
+        String dateKey = DateUtils.formatDateKey(date);
+        long userId = Long.parseLong(logArr[3]);
+        long adId = Long.parseLong(logArr[4]);
+        return new Tuple2<>(dateKey + "_" + userId + "_" + adId, 1L);
     }
 
     /**
@@ -372,12 +366,12 @@ public class AdClickRealTimeStatService {
         // 用户可以看到，实时的数据，比如2015-11-01，历史数据
         // 2015-12-01，当天，可以看到当天所有的实时数据（动态改变），比如江苏省南京市
         // 广告可以进行选择（广告主、广告名称、广告类型来筛选一个出来）
-        // 拿着date、province、city、adid，去mysql中查询最新的数据
+        // 拿着date、province、city、adId，去mysql中查询最新的数据
         // 等等，基于这几个维度，以及这份动态改变的数据，是可以实现比较灵活的广告点击流量查看的功能的
-        // date province city userid adid
-        // date_province_city_adid，作为key；1作为value
+        // date province city userid adId
+        // date_province_city_adId，作为key；1作为value
         // 通过spark，直接统计出来全局的点击次数，在spark集群中保留一份；在mysql中，也保留一份
-        // 我们要对原始数据进行map，映射成<date_province_city_adid,1>格式
+        // 我们要对原始数据进行map，映射成<date_province_city_adId,1>格式
         // 然后呢，对上述格式的数据，执行updateStateByKey算子
         // spark streaming特有的一种算子，在spark集群内存中，维护一份key的全局状态
         JavaPairDStream<String, Long> mappedDStream = javaPairDStream
@@ -396,15 +390,14 @@ public class AdClickRealTimeStatService {
 
     private static Tuple2<String, Long> handleAdRealTimeLog(Tuple2<String, String> tuple) {
         String log = tuple._2;
-        String[] logSplited = log.split(" ");
-        String timestamp = logSplited[0];
+        String[] logArr = log.split(" ");
+        String timestamp = logArr[0];
         Date date = new Date(Long.parseLong(timestamp));
-        String datekey = DateUtils.formatDateKey(date);    // yyyyMMdd
-        String province = logSplited[1];
-        String city = logSplited[2];
-        long adid = Long.parseLong(logSplited[4]);
-        String key = datekey + "_" + province + "_" + city + "_" + adid;
-        return new Tuple2<>(key, 1L);
+        String dateKey = DateUtils.formatDateKey(date);    // yyyyMMdd
+        String province = logArr[1];
+        String city = logArr[2];
+        long adId = Long.parseLong(logArr[4]);
+        return new Tuple2<>(dateKey + "_" + province + "_" + city + "_" + adId, 1L);
     }
 
     @SuppressWarnings({"Guava", "OptionalUsedAsFieldOrParameterType"})
@@ -468,7 +461,7 @@ public class AdClickRealTimeStatService {
 
     private JavaRDD<Row> calculateProvinceTop(JavaPairRDD<String, Long> rdd) {
         JavaRDD<Row> javaRDD = rdd
-                // 计算出每天各省份各广告的点击量 <yyyyMMdd_province_city_adid, clickCount> ==> <yyyyMMdd_province_adid, clickCount>
+                // 计算出每天各省份各广告的点击量 <yyyyMMdd_province_city_adId, clickCount> ==> <yyyyMMdd_province_adId, clickCount>
                 .mapToPair(this::calculatePerDayClickCount)
                 .reduceByKey(Long::sum)
                 // 将dailyAdClickCountByProvinceRDD转换为DataFrame
@@ -520,8 +513,7 @@ public class AdClickRealTimeStatService {
         String province = keyArr[1];
         long adId = Long.parseLong(keyArr[3]);
         long clickCount = tuple._2;
-        String key = date + "_" + province + "_" + adId;
-        return new Tuple2<>(key, clickCount);
+        return new Tuple2<>(date + "_" + province + "_" + adId, clickCount);
     }
 
     /**
@@ -531,9 +523,9 @@ public class AdClickRealTimeStatService {
      */
     private void calculateAdClickCountByWindow(JavaPairInputDStream<String, String> adRealTimeLogDStream) {
         adRealTimeLogDStream
-                // 映射成<yyyyMMddHHMM_adid,1L>格式
+                // 映射成<yyyyMMddHHMM_adId,1L>格式
                 .mapToPair(this::doDateAdIdAndOneLong)
-                // 过来的每个batch rdd，都会被映射成<yyyyMMddHHMM_adid,1L>的格式
+                // 过来的每个batch rdd，都会被映射成<yyyyMMddHHMM_adId,1L>的格式
                 // 每次出来一个新的batch，都要获取最近1小时内的所有的batch
                 // 然后根据key进行reduceByKey操作，统计出来最近一小时内的各分钟各广告的点击次数
                 // 1小时滑动窗口内的广告点击趋势
@@ -549,21 +541,21 @@ public class AdClickRealTimeStatService {
     }
 
     private Tuple2<String, Long> doDateAdIdAndOneLong(Tuple2<String, String> tuple) {
-        // timestamp province city userid adid
-        String[] logSplited = tuple._2.split(" ");
-        String timeMinute = DateUtils.formatTimeMinute(new Date(Long.parseLong(logSplited[0])));
-        long adid = Long.parseLong(logSplited[4]);
-        return new Tuple2<>(timeMinute + "_" + adid, 1L);
+        // timestamp province city userId adId
+        String[] logArr = tuple._2.split(" ");
+        String timeMinute = DateUtils.formatTimeMinute(new Date(Long.parseLong(logArr[0])));
+        long adId = Long.parseLong(logArr[4]);
+        return new Tuple2<>(timeMinute + "_" + adId, 1L);
     }
 
     private void updateAdClickTrend(Iterator<Tuple2<String, Long>> iterator) {
         List<AdClickTrend> adClickTrends = StreamSupport
                 .stream(Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED), false)
                 .map(tuple -> {
-                    String[] keySplited = tuple._1.split("_");
+                    String[] keyArr = tuple._1.split("_");
                     // yyyyMMddHHmm
-                    String dateMinute = keySplited[0];
-                    long adid = Long.parseLong(keySplited[1]);
+                    String dateMinute = keyArr[0];
+                    long adId = Long.parseLong(keyArr[1]);
                     long clickCount = tuple._2;
                     String date = DateUtils.formatDate(DateUtils.parseDateKey(dateMinute.substring(0, 8)));
                     String hour = dateMinute.substring(8, 10);
@@ -572,7 +564,7 @@ public class AdClickRealTimeStatService {
                     adClickTrend.setDate(date);
                     adClickTrend.setHour(hour);
                     adClickTrend.setMinute(minute);
-                    adClickTrend.setAdId(adid);
+                    adClickTrend.setAdId(adId);
                     adClickTrend.setClickCount(clickCount);
                     return adClickTrend;
                 }).collect(Collectors.toList());

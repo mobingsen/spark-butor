@@ -1,5 +1,7 @@
 package com.mbs.spark.module.session.model;
 
+import com.mbs.spark.constant.Constants;
+import com.mbs.spark.util.StringUtils;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -27,4 +29,14 @@ public class SessionRandomExtract {
 	private String startTime;
 	private String searchKeywords;
 	private String clickCategoryIds;
+
+	public static SessionRandomExtract ctor(long taskId, String sessionAggrInfo) {
+		SessionRandomExtract sessionRandomExtract = new SessionRandomExtract();
+		sessionRandomExtract.setTaskId(taskId);
+		sessionRandomExtract.setSessionId(StringUtils.getFieldFromConcatString(sessionAggrInfo, "\\|", Constants.FIELD_SESSION_ID));
+		sessionRandomExtract.setStartTime(StringUtils.getFieldFromConcatString(sessionAggrInfo, "\\|", Constants.FIELD_START_TIME));
+		sessionRandomExtract.setSearchKeywords(StringUtils.getFieldFromConcatString(sessionAggrInfo, "\\|", Constants.FIELD_SEARCH_KEYWORDS));
+		sessionRandomExtract.setClickCategoryIds(StringUtils.getFieldFromConcatString(sessionAggrInfo, "\\|", Constants.FIELD_CLICK_CATEGORY_IDS));
+		return sessionRandomExtract;
+	}
 }

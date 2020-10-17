@@ -1,6 +1,8 @@
 package com.mbs.spark.module.session.service;
 
-import com.google.common.base.Optional;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Range;
+import com.google.gson.Gson;
 import com.mbs.spark.conf.SparkConfigurer;
 import com.mbs.spark.constant.Constants;
 import com.mbs.spark.module.product.model.Top10Category;
@@ -20,20 +22,16 @@ import com.mbs.spark.module.task.model.Task;
 import com.mbs.spark.module.task.repository.TaskRepository;
 import com.mbs.spark.test.MockData;
 import com.mbs.spark.util.DateUtils;
-import com.mbs.spark.util.NumberUtils;
 import com.mbs.spark.util.StringUtils;
 import com.mbs.spark.util.ValidUtils;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import org.apache.spark.Accumulator;
 import org.apache.spark.SparkConf;
-import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.broadcast.Broadcast;
-import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.hive.HiveContext;
@@ -42,6 +40,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import scala.Tuple2;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -458,8 +458,10 @@ public class UserVisitSessionAnalyzeService {
 	 * @param param
 	 * @return
 	 */
-	private JavaPairRDD<String, String> filterSessionAndAggrStat(JavaPairRDD<String, String> sessionid2AggrInfoRDD,
-			final Param param, final Accumulator<String> sessionAggrStatAccumulator) {
+	private JavaPairRDD<String, String> filterSessionAndAggrStat(
+	        JavaPairRDD<String, String> sessionid2AggrInfoRDD,
+			final Param param,
+            final Accumulator<String> sessionAggrStatAccumulator) {
 		// 为了使用我们后面的ValieUtils，所以，首先将所有的筛选参数拼接成一个连接串
 		// 此外，这里其实大家不要觉得是多此一举
 		// 其实我们是给后面的性能优化埋下了一个伏笔
@@ -527,10 +529,8 @@ public class UserVisitSessionAnalyzeService {
 			// 主要走到这一步，那么就是需要计数的session
 			sessionAggrStatAccumulator.add(Constants.SESSION_COUNT);
 			// 计算出session的访问时长和访问步长的范围，并进行相应的累加
-			long visitLength = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-					aggrInfo, "\\|", Constants.FIELD_VISIT_LENGTH)));
-			long stepLength = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-					aggrInfo, "\\|", Constants.FIELD_STEP_LENGTH)));
+			long visitLength = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(aggrInfo, "\\|", Constants.FIELD_VISIT_LENGTH)));
+			long stepLength = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(aggrInfo, "\\|", Constants.FIELD_STEP_LENGTH)));
 			calculateVisitLength(visitLength, sessionAggrStatAccumulator);
 			calculateStepLength(stepLength, sessionAggrStatAccumulator);
 			return true;
@@ -544,25 +544,22 @@ public class UserVisitSessionAnalyzeService {
 	 * @param sessionAggrStatAccumulator
 	 */
 	private void calculateVisitLength(long visitLength, Accumulator<String> sessionAggrStatAccumulator) {
-		if(visitLength >=1 && visitLength <= 3) {
-			sessionAggrStatAccumulator.add(Constants.TIME_PERIOD_1s_3s);
-		} else if(visitLength >=4 && visitLength <= 6) {
-			sessionAggrStatAccumulator.add(Constants.TIME_PERIOD_4s_6s);
-		} else if(visitLength >=7 && visitLength <= 9) {
-			sessionAggrStatAccumulator.add(Constants.TIME_PERIOD_7s_9s);
-		} else if(visitLength >=10 && visitLength <= 30) {
-			sessionAggrStatAccumulator.add(Constants.TIME_PERIOD_10s_30s);
-		} else if(visitLength > 30 && visitLength <= 60) {
-			sessionAggrStatAccumulator.add(Constants.TIME_PERIOD_30s_60s);
-		} else if(visitLength > 60 && visitLength <= 180) {
-			sessionAggrStatAccumulator.add(Constants.TIME_PERIOD_1m_3m);
-		} else if(visitLength > 180 && visitLength <= 600) {
-			sessionAggrStatAccumulator.add(Constants.TIME_PERIOD_3m_10m);
-		} else if(visitLength > 600 && visitLength <= 1800) {
-			sessionAggrStatAccumulator.add(Constants.TIME_PERIOD_10m_30m);
-		} else if(visitLength > 1800) {
-			sessionAggrStatAccumulator.add(Constants.TIME_PERIOD_30m);
-		}
+        ImmutableMap.<Range<Integer>, String>builder()
+                .put(Range.closed(1, 3), Constants.TIME_PERIOD_1s_3s)
+                .put(Range.closed(4, 6), Constants.TIME_PERIOD_4s_6s)
+                .put(Range.closed(7, 9), Constants.TIME_PERIOD_7s_9s)
+                .put(Range.closed(10, 30), Constants.TIME_PERIOD_10s_30s)
+                .put(Range.openClosed(30, 60), Constants.TIME_PERIOD_30s_60s)
+                .put(Range.openClosed(60, 180), Constants.TIME_PERIOD_1m_3m)
+                .put(Range.openClosed(180, 600), Constants.TIME_PERIOD_3m_10m)
+                .put(Range.openClosed(600, 1800), Constants.TIME_PERIOD_10m_30m)
+                .put(Range.greaterThan(1800), Constants.TIME_PERIOD_30m)
+                .build()
+                .entrySet().stream()
+                .filter(e -> e.getKey().contains((int) visitLength))
+                .findFirst()
+                .map(Map.Entry::getValue)
+                .ifPresent(sessionAggrStatAccumulator::add);
 	}
 
 	/**
@@ -571,19 +568,19 @@ public class UserVisitSessionAnalyzeService {
 	 * @param sessionAggrStatAccumulator
 	 */
 	private void calculateStepLength(long stepLength, Accumulator<String> sessionAggrStatAccumulator) {
-		if(stepLength >= 1 && stepLength <= 3) {
-			sessionAggrStatAccumulator.add(Constants.STEP_PERIOD_1_3);
-		} else if(stepLength >= 4 && stepLength <= 6) {
-			sessionAggrStatAccumulator.add(Constants.STEP_PERIOD_4_6);
-		} else if(stepLength >= 7 && stepLength <= 9) {
-			sessionAggrStatAccumulator.add(Constants.STEP_PERIOD_7_9);
-		} else if(stepLength >= 10 && stepLength <= 30) {
-			sessionAggrStatAccumulator.add(Constants.STEP_PERIOD_10_30);
-		} else if(stepLength > 30 && stepLength <= 60) {
-			sessionAggrStatAccumulator.add(Constants.STEP_PERIOD_30_60);
-		} else if(stepLength > 60) {
-			sessionAggrStatAccumulator.add(Constants.STEP_PERIOD_60);
-		}
+        ImmutableMap.<Range<Integer>, String>builder()
+                .put(Range.closed(1, 3), Constants.STEP_PERIOD_1_3)
+                .put(Range.closed(4, 6), Constants.STEP_PERIOD_4_6)
+                .put(Range.closed(7, 9), Constants.STEP_PERIOD_7_9)
+                .put(Range.closed(10, 30), Constants.STEP_PERIOD_10_30)
+                .put(Range.openClosed(30, 60), Constants.STEP_PERIOD_30_60)
+                .put(Range.greaterThan(60), Constants.STEP_PERIOD_60)
+                .build()
+                .entrySet().stream()
+                .filter(e -> e.getKey().contains((int) stepLength))
+                .findFirst()
+                .map(Map.Entry::getValue)
+                .ifPresent(sessionAggrStatAccumulator::add);
 	}
 
 	/**
@@ -607,74 +604,44 @@ public class UserVisitSessionAnalyzeService {
 									  final long taskId,
 									  JavaPairRDD<String, String> sessionid2AggrInfoRDD,
 									  JavaPairRDD<String, Row> sessionid2actionRDD) {
-		/*
-		 * 第一步，计算出每天每小时的session数量
-		 */
+		//第一步，计算出每天每小时的session数量
 		// 获取<yyyy-MM-dd_HH,aggrInfo>格式的RDD
 		JavaPairRDD<String, String> time2sessionidRDD = sessionid2AggrInfoRDD
 				.mapToPair(tuple -> {
-					String aggrInfo = tuple._2;
-					String startTime = StringUtils.getFieldFromConcatString(aggrInfo, "\\|", Constants.FIELD_START_TIME);
+					String startTime = StringUtils.getFieldFromConcatString(tuple._2, "\\|", Constants.FIELD_START_TIME);
 					String dateHour = DateUtils.getDateHour(startTime);
-					return new Tuple2<>(dateHour, aggrInfo);
+					return new Tuple2<>(dateHour, tuple._2);
 				});
-
 		/*
 		 * 思考一下：这里我们不要着急写大量的代码，做项目的时候，一定要用脑子多思考
-		 *
 		 * 每天每小时的session数量，然后计算出每天每小时的session抽取索引，遍历每天每小时session
 		 * 首先抽取出的session的聚合数据，写入session_random_extract表
 		 * 所以第一个RDD的value，应该是session聚合数据
-		 *
 		 */
-
 		// 得到每天每小时的session数量
-
 		/*
 		 * 每天每小时的session数量的计算
 		 * 是有可能出现数据倾斜的吧，这个是没有疑问的
 		 * 比如说大部分小时，一般访问量也就10万；但是，中午12点的时候，高峰期，一个小时1000万
 		 * 这个时候，就会发生数据倾斜
-		 *
 		 * 我们就用这个countByKey操作，给大家演示第三种和第四种方案
-		 *
 		 */
-
 		Map<String, Object> countMap = time2sessionidRDD.countByKey();
-
-		/*
-		 * 第二步，使用按时间比例随机抽取算法，计算出每天每小时要抽取session的索引
-		 */
-
+		//第二步，使用按时间比例随机抽取算法，计算出每天每小时要抽取session的索引
 		// 将<yyyy-MM-dd_HH,count>格式的map，转换成<yyyy-MM-dd,<HH,count>>的格式
-		Map<String, Map<String, Long>> dateHourCountMap = new HashMap<String, Map<String, Long>>();
-
-		for(Map.Entry<String, Object> countEntry : countMap.entrySet()) {
-			String dateHour = countEntry.getKey();
-			String date = dateHour.split("_")[0];
-			String hour = dateHour.split("_")[1];
-
-			long count = Long.parseLong(String.valueOf(countEntry.getValue()));
-			Map<String, Long> hourCountMap = dateHourCountMap.computeIfAbsent(date, k -> new HashMap<>());
-			hourCountMap.put(hour, count);
-		}
-
+        Map<String, Map<String, Long>> dateHourCountMap = countMap.entrySet().stream()
+                .collect(Collectors.toMap(e -> e.getKey().split("_")[0],
+                        e -> ImmutableMap.of(e.getKey().split("_")[1], Long.parseLong(String.valueOf(e.getValue())))));
 		// 开始实现我们的按时间比例随机抽取算法
-
 		// 总共要抽取100个session，先按照天数，进行平分
 		int extractNumberPerDay = 100 / dateHourCountMap.size();
-
 		// <date,<hour,(3,5,20,102)>>
-
 		/*
 		 * session随机抽取功能
-		 *
 		 * 用到了一个比较大的变量，随机抽取索引map
 		 * 之前是直接在算子里面使用了这个map，那么根据我们刚才讲的这个原理，每个task都会拷贝一份map副本
 		 * 还是比较消耗内存和网络传输性能的
-		 *
 		 * 将map做成广播变量
-		 *
 		 */
 		Map<String, Map<String, List<Integer>>> dateHourExtractMap = new HashMap<>();
 		Random random = new Random();
@@ -713,19 +680,18 @@ public class UserVisitSessionAnalyzeService {
 		Function<Map.Entry<String, Map<String, List<Integer>>>, Map<String, IntList>> valueMapper = entry ->
 				entry.getValue().entrySet().stream()
 						.collect(Collectors.toMap(Map.Entry::getKey, e -> new IntArrayList(e.getValue())));
-		Map<String, Map<String, IntList>> fastutilDateHourExtractMap = dateHourExtractMap.entrySet().stream()
+		Map<String, Map<String, IntList>> fastUtilDateHourExtractMap = dateHourExtractMap.entrySet().stream()
 				.collect(Collectors.toMap(Map.Entry::getKey, valueMapper));
 		/*
 		 * 广播变量，很简单
 		 * 其实就是SparkContext的broadcast()方法，传入你要广播的变量，即可
 		 */
-		final Broadcast<Map<String, Map<String, IntList>>> dateHourExtractMapBroadcast = sc.broadcast(fastutilDateHourExtractMap);
+		final Broadcast<Map<String, Map<String, IntList>>> dateHourExtractMapBroadcast = sc.broadcast(fastUtilDateHourExtractMap);
 		/*
 		 * 第三步：遍历每天每小时的session，然后根据随机索引进行抽取
 		 */
 		// 执行groupByKey算子，得到<dateHour,(session aggrInfo)>
 		JavaPairRDD<String, Iterable<String>> time2sessionsRDD = time2sessionidRDD.groupByKey();
-
 		// 我们用flatMap算子，遍历所有的<dateHour,(session aggrInfo)>格式的数据
 		// 然后呢，会遍历每天每小时的session
 		// 如果发现某个session恰巧在我们指定的这天这小时的随机抽取索引上
@@ -734,7 +700,6 @@ public class UserVisitSessionAnalyzeService {
 		// 然后最后一步，是用抽取出来的sessionid，去join它们的访问行为明细数据，写入session表
 		JavaPairRDD<String, String> extractSessionidsRDD = time2sessionsRDD
 				.flatMapToPair(tuple -> {
-					List<Tuple2<String, String>> extractSessionids = new ArrayList<Tuple2<String, String>>();
 					String dateHour = tuple._1;
 					String date = dateHour.split("_")[0];
 					String hour = dateHour.split("_")[1];
@@ -746,25 +711,19 @@ public class UserVisitSessionAnalyzeService {
 					 */
 					Map<String, Map<String, IntList>> dateHourExtractMap1 = dateHourExtractMapBroadcast.value();
 					List<Integer> extractIndexList = dateHourExtractMap1.get(date).get(hour);
+					List<Tuple2<String, String>> extractSessionIds = new ArrayList<>();
 					int index = 0;
 					while(iterator.hasNext()) {
 						String sessionAggrInfo = iterator.next();
 						if(extractIndexList.contains(index)) {
-							String sessionid = StringUtils.getFieldFromConcatString(sessionAggrInfo, "\\|", Constants.FIELD_SESSION_ID);
 							// 将数据写入MySQL
-							SessionRandomExtract sessionRandomExtract = new SessionRandomExtract();
-							sessionRandomExtract.setTaskId(taskId);
-							sessionRandomExtract.setSessionId(sessionid);
-							sessionRandomExtract.setStartTime(StringUtils.getFieldFromConcatString(sessionAggrInfo, "\\|", Constants.FIELD_START_TIME));
-							sessionRandomExtract.setSearchKeywords(StringUtils.getFieldFromConcatString(sessionAggrInfo, "\\|", Constants.FIELD_SEARCH_KEYWORDS));
-							sessionRandomExtract.setClickCategoryIds(StringUtils.getFieldFromConcatString(sessionAggrInfo, "\\|", Constants.FIELD_CLICK_CATEGORY_IDS));
-							sessionRandomExtractRepository.save(sessionRandomExtract);
-							// 将sessionid加入list
-							extractSessionids.add(new Tuple2<>(sessionid, sessionid));
+							SessionRandomExtract extract = SessionRandomExtract.ctor(taskId, sessionAggrInfo);
+							sessionRandomExtractRepository.save(extract);
+							extractSessionIds.add(new Tuple2<>(extract.getSessionId(), extract.getSessionId()));
 						}
 						index++;
 					}
-					return extractSessionids;
+					return extractSessionIds;
 				});
 
 		/*
@@ -787,95 +746,19 @@ public class UserVisitSessionAnalyzeService {
 	 * 计算各session范围占比，并写入MySQL
 	 * @param value
 	 */
-	private void calculateAndPersistAggrStat(String value, long taskid) {
-		// 从Accumulator统计串中获取值
-		long session_count = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.SESSION_COUNT)));
-
-		long visit_length_1s_3s = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.TIME_PERIOD_1s_3s)));
-		long visit_length_4s_6s = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.TIME_PERIOD_4s_6s)));
-		long visit_length_7s_9s = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.TIME_PERIOD_7s_9s)));
-		long visit_length_10s_30s = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.TIME_PERIOD_10s_30s)));
-		long visit_length_30s_60s = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.TIME_PERIOD_30s_60s)));
-		long visit_length_1m_3m = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.TIME_PERIOD_1m_3m)));
-		long visit_length_3m_10m = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.TIME_PERIOD_3m_10m)));
-		long visit_length_10m_30m = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.TIME_PERIOD_10m_30m)));
-		long visit_length_30m = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.TIME_PERIOD_30m)));
-
-		long step_length_1_3 = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.STEP_PERIOD_1_3)));
-		long step_length_4_6 = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.STEP_PERIOD_4_6)));
-		long step_length_7_9 = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.STEP_PERIOD_7_9)));
-		long step_length_10_30 = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.STEP_PERIOD_10_30)));
-		long step_length_30_60 = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.STEP_PERIOD_30_60)));
-		long step_length_60 = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(
-				value, "\\|", Constants.STEP_PERIOD_60)));
-
-		// 计算各个访问时长和访问步长的范围
-		double visit_length_1s_3s_ratio = NumberUtils.formatDouble(
-				(double)visit_length_1s_3s / (double)session_count, 2);
-		double visit_length_4s_6s_ratio = NumberUtils.formatDouble(
-				(double)visit_length_4s_6s / (double)session_count, 2);
-		double visit_length_7s_9s_ratio = NumberUtils.formatDouble(
-				(double)visit_length_7s_9s / (double)session_count, 2);
-		double visit_length_10s_30s_ratio = NumberUtils.formatDouble(
-				(double)visit_length_10s_30s / (double)session_count, 2);
-		double visit_length_30s_60s_ratio = NumberUtils.formatDouble(
-				(double)visit_length_30s_60s / (double)session_count, 2);
-		double visit_length_1m_3m_ratio = NumberUtils.formatDouble(
-				(double)visit_length_1m_3m / (double)session_count, 2);
-		double visit_length_3m_10m_ratio = NumberUtils.formatDouble(
-				(double)visit_length_3m_10m / (double)session_count, 2);
-		double visit_length_10m_30m_ratio = NumberUtils.formatDouble(
-				(double)visit_length_10m_30m / (double)session_count, 2);
-		double visit_length_30m_ratio = NumberUtils.formatDouble(
-				(double)visit_length_30m / (double)session_count, 2);
-
-		double step_length_1_3_ratio = NumberUtils.formatDouble(
-				(double)step_length_1_3 / (double)session_count, 2);
-		double step_length_4_6_ratio = NumberUtils.formatDouble(
-				(double)step_length_4_6 / (double)session_count, 2);
-		double step_length_7_9_ratio = NumberUtils.formatDouble(
-				(double)step_length_7_9 / (double)session_count, 2);
-		double step_length_10_30_ratio = NumberUtils.formatDouble(
-				(double)step_length_10_30 / (double)session_count, 2);
-		double step_length_30_60_ratio = NumberUtils.formatDouble(
-				(double)step_length_30_60 / (double)session_count, 2);
-		double step_length_60_ratio = NumberUtils.formatDouble(
-				(double)step_length_60 / (double)session_count, 2);
-
+	private void calculateAndPersistAggrStat(String value, long taskId) {
+        Map<String, Long> map = Arrays.stream(value.split("\\|"))
+                .collect(Collectors.toMap(kv -> kv.split("=")[0], kv -> Long.parseLong(kv.split("=")[1])));
+        long sessionCount = map.remove(Constants.SESSION_COUNT);
+        Map<String, Double> result = map.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> new BigDecimal(e.getValue())
+                        .divide(BigDecimal.valueOf(sessionCount), 2, RoundingMode.HALF_UP).doubleValue()));
+        // 从Accumulator统计串中获取值
 		// 将统计结果封装为Domain对象
 		SessionAggrStat sessionAggrStat = new SessionAggrStat();
-		sessionAggrStat.setTaskId(taskid);
-		sessionAggrStat.setSession_count(session_count);
-		sessionAggrStat.setVisit_length_1s_3s_ratio(visit_length_1s_3s_ratio);
-		sessionAggrStat.setVisit_length_4s_6s_ratio(visit_length_4s_6s_ratio);
-		sessionAggrStat.setVisit_length_7s_9s_ratio(visit_length_7s_9s_ratio);
-		sessionAggrStat.setVisit_length_10s_30s_ratio(visit_length_10s_30s_ratio);
-		sessionAggrStat.setVisit_length_30s_60s_ratio(visit_length_30s_60s_ratio);
-		sessionAggrStat.setVisit_length_1m_3m_ratio(visit_length_1m_3m_ratio);
-		sessionAggrStat.setVisit_length_3m_10m_ratio(visit_length_3m_10m_ratio);
-		sessionAggrStat.setVisit_length_10m_30m_ratio(visit_length_10m_30m_ratio);
-		sessionAggrStat.setVisit_length_30m_ratio(visit_length_30m_ratio);
-		sessionAggrStat.setStep_length_1_3_ratio(step_length_1_3_ratio);
-		sessionAggrStat.setStep_length_4_6_ratio(step_length_4_6_ratio);
-		sessionAggrStat.setStep_length_7_9_ratio(step_length_7_9_ratio);
-		sessionAggrStat.setStep_length_10_30_ratio(step_length_10_30_ratio);
-		sessionAggrStat.setStep_length_30_60_ratio(step_length_30_60_ratio);
-		sessionAggrStat.setStep_length_60_ratio(step_length_60_ratio);
+		sessionAggrStat.setTaskId(taskId);
+		sessionAggrStat.setSessionCount(sessionCount);
+		sessionAggrStat.setResult(new Gson().toJson(result));
 		sessionAggrStatRepository.save(sessionAggrStat);
 	}
 
