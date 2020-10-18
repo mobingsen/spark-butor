@@ -136,7 +136,7 @@
                     </descriptorRefs>
                     <archive>
                         <manifest>
-                            <mainClass></mainClass>
+                            <mainClass>com.mbs.spark.Bootstrap</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
