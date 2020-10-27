@@ -1,13 +1,8 @@
 package com.mbs.spark.module.product.udf;
 
+import com.mbs.spark.tools.JsonTool;
 import org.apache.spark.sql.api.java.UDF2;
 
-/**
- * get_json_object()
- *
- * 技术点：自定义UDF函数
- *
- */
 public class GetJsonObjectUDF implements UDF2<String, String, String> {
 
 	private static final long serialVersionUID = 1L;

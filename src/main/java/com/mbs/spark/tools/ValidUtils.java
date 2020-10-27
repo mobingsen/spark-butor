@@ -1,4 +1,4 @@
-package com.mbs.spark.util;
+package com.mbs.spark.tools;
 
 /**
  * 校验工具类

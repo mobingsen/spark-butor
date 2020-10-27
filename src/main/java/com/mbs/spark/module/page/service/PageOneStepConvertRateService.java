@@ -8,14 +8,12 @@ import com.mbs.spark.module.task.model.Param;
 import com.mbs.spark.module.task.model.Task;
 import com.mbs.spark.module.task.repository.TaskRepository;
 import com.mbs.spark.test.MockData;
-import com.mbs.spark.util.DateUtils;
-import com.mbs.spark.util.NumberUtils;
+import com.mbs.spark.tools.DateUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.broadcast.Broadcast;
-import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.hive.HiveContext;
@@ -31,6 +29,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -48,7 +47,6 @@ public class PageOneStepConvertRateService {
 	SparkConfigurer sparkConfigurer;
 
 	public void main(String[] args) {
-		// 1、构造Spark上下文
 		SparkConf conf = new SparkConf()
 				.setAppName(Constants.SPARK_APP_NAME_PAGE);
 		if(sparkConfigurer.isLocal()) {
@@ -56,12 +54,9 @@ public class PageOneStepConvertRateService {
 		}
 		JavaSparkContext sc = new JavaSparkContext(conf);
 		SQLContext sqlContext = sparkConfigurer.isLocal() ? new SQLContext(sc.sc()) : new HiveContext(sc.sc());
-
-		// 2、生成模拟数据
 		if(sparkConfigurer.isLocal()) {
 			MockData.mock(sc, sqlContext);
 		}
-		// 3、查询任务，获取任务的参数
 		long taskid = 0;
 		if(sparkConfigurer.isLocal()) {
 			taskid = sparkConfigurer.getTaskPage();
@@ -80,7 +75,7 @@ public class PageOneStepConvertRateService {
 			return;
 		}
 
-		// 4、查询指定日期范围内的用户访问行为数据
+		// 查询指定日期范围内的用户访问行为数据
 		String startDate = task.toParam().getStartDate();
 		String endDate = task.toParam().getEndDate();
 		String sql = "select * from user_visit_action where date>='" + startDate + "' and date<='" + endDate + "'";
@@ -88,73 +83,24 @@ public class PageOneStepConvertRateService {
 		/*
 		 * 这里就很有可能发生上面说的问题
 		 * 比如说，Spark SQl默认就给第一个stage设置了20个task，但是根据你的数据量以及算法的复杂度
-		 * 实际上，你需要1000个task去并行执行
-		 *
-		 * 所以说，在这里，就可以对Spark SQL刚刚查询出来的RDD执行repartition重分区操作
+		 * 实际上，你需要1000个task去并行执行.所以说，在这里，就可以对Spark SQL刚刚查询出来的RDD执行repartition重分区操作
 		 */
 //		sqlContext.sql(sql).javaRDD().repartition(1000);
 		JavaRDD<Row> actionRDD =  sqlContext.sql(sql).javaRDD();
-		// 对用户访问行为数据做一个映射，将其映射为<sessionid,访问行为>的格式
-		// 咱们的用户访问页面切片的生成，是要基于每个session的访问数据，来进行生成的
-		// 脱离了session，生成的页面访问切片，是么有意义的
-		// 举例，比如用户A，访问了页面3和页面5
-		// 用于B，访问了页面4和页面6
-		// 漏了一个前提，使用者指定的页面流筛选条件，比如页面3->页面4->页面7
-		// 你能不能说，是将页面3->页面4，串起来，作为一个页面切片，来进行统计呢
-		// 当然不行
-		// 所以说呢，页面切片的生成，肯定是要基于用户session粒度的
-
-		JavaPairRDD<String, Row> sessionid2actionRDD = getSessionid2actionRDD(actionRDD);
-		sessionid2actionRDD = sessionid2actionRDD.cache(); // persist(StorageLevel.MEMORY_ONLY)
-
-		// 对<sessionid,访问行为> RDD，做一次groupByKey操作
-		// 因为我们要拿到每个session对应的访问行为数据，才能够去生成切片
+		JavaPairRDD<String, Row> sessionid2actionRDD = actionRDD
+				// 获取<sessionid,用户访问行为>格式的数据
+				.mapToPair(row -> new Tuple2<>(row.getString(2), row))
+				.cache(); // persist(StorageLevel.MEMORY_ONLY)
 		JavaPairRDD<String, Iterable<Row>> sessionid2actionsRDD = sessionid2actionRDD.groupByKey();
-
-		// 最核心的一步，每个session的单跳页面切片的生成，以及页面流的匹配，算法
-		JavaPairRDD<String, Integer> pageSplitRDD = generateAndMatchPageSplit(sc, sessionid2actionsRDD, task.toParam());
+		// 每个session的单跳页面切片的生成，以及页面流的匹配算法
+		JavaPairRDD<String, Long> pageSplitRDD = generateAndMatchPageSplit(sc, sessionid2actionsRDD, task.toParam());
 		Map<String, Object> pageSplitPvMap = pageSplitRDD.countByKey();
-
-		// 使用者指定的页面流是3,2,5,8,6
-		// 咱们现在拿到的这个pageSplitPvMap，3->2，2->5，5->8，8->6
+		// 使用者指定的页面流是3,2,5,8,6   现在拿到的这个pageSplitPvMap，3->2，2->5，5->8，8->6
 		long startPagePv = getStartPagePv(task.toParam(), sessionid2actionsRDD);
-
 		// 计算目标页面流的各个页面切片的转化率
 		Map<String, Double> convertRateMap = computePageSplitConvertRate(task.toParam(), pageSplitPvMap, startPagePv);
-
 		// 持久化页面切片转化率
 		persistConvertRate(taskid, convertRateMap);
-	}
-
-	/**
-	 * 获取指定日期范围内的用户行为数据RDD
-	 * @param sqlContext
-	 * @param param
-	 * @return
-	 */
-	public JavaRDD<Row> getActionRDDByDateRange(SQLContext sqlContext, Param param) {
-		String startDate = param.getStartDate();
-		String endDate = param.getEndDate();
-		String sql = "select * from user_visit_action where date>='" + startDate + "' and date<='" + endDate + "'";
-//				+ "and session_id not in('','','')"
-		/*
-		 * 这里就很有可能发生上面说的问题
-		 * 比如说，Spark SQl默认就给第一个stage设置了20个task，但是根据你的数据量以及算法的复杂度
-		 * 实际上，你需要1000个task去并行执行
-		 *
-		 * 所以说，在这里，就可以对Spark SQL刚刚查询出来的RDD执行repartition重分区操作
-		 */
-//		return sqlContext.sql(sql).javaRDD().repartition(1000);
-		return sqlContext.sql(sql).javaRDD();
-	}
-
-	/**
-	 * 获取<sessionid,用户访问行为>格式的数据
-	 * @param actionRDD 用户访问行为RDD
-	 * @return <sessionid,用户访问行为>格式的数据
-	 */
-	private static JavaPairRDD<String, Row> getSessionid2actionRDD(JavaRDD<Row> actionRDD) {
-		return actionRDD.mapToPair(row -> new Tuple2<>(row.getString(2), row));
 	}
 
 	/**
@@ -164,30 +110,16 @@ public class PageOneStepConvertRateService {
 	 * @param param
 	 * @return
 	 */
-	private static JavaPairRDD<String, Integer> generateAndMatchPageSplit(JavaSparkContext sc,
+	private JavaPairRDD<String, Long> generateAndMatchPageSplit(JavaSparkContext sc,
 			JavaPairRDD<String, Iterable<Row>> sessionid2actionsRDD, Param param) {
 		String targetPageFlow = param.getTargetPageFlow();
 		final Broadcast<String> targetPageFlowBroadcast = sc.broadcast(targetPageFlow);
 		return sessionid2actionsRDD.flatMapToPair(tuple -> generateAndMatchPage(targetPageFlowBroadcast, tuple));
 	}
 
-	private static Iterable<Tuple2<String, Integer>> generateAndMatchPage(Broadcast<String> targetPageFlowBroadcast,
+	private Iterable<Tuple2<String, Long>> generateAndMatchPage(Broadcast<String> broadcast,
 																		  Tuple2<String, Iterable<Row>> tuple) {
-		List<Tuple2<String, Integer>> list = new ArrayList<>();
-		// 获取到当前session的访问行为的迭代器
-		// 获取使用者指定的页面流
-		// 使用者指定的页面流，1,2,3,4,5,6,7
-		// 1->2的转化率是多少？2->3的转化率是多少？
-		String[] targetPages = targetPageFlowBroadcast.value().split(",");
-		// 这里，我们拿到的session的访问行为，默认情况下是乱序的
-		// 比如说，正常情况下，我们希望拿到的数据，是按照时间顺序排序的
-		// 但是问题是，默认是不排序的
-		// 所以，我们第一件事情，对session的访问行为数据按照时间进行排序
-
-		// 举例，反例
-		// 比如，3->5->4->10->7
-		// 3->4->5->7->10
-		// 排序
+		String[] targetPages = broadcast.value().split(",");
 		Comparator<Row> comparator = (o1, o2) -> {
 			Date date1 = DateUtils.parseTime(o1.getString(4));
 			Date date2 = DateUtils.parseTime(o2.getString(4));
@@ -198,8 +130,8 @@ public class PageOneStepConvertRateService {
 		List<Row> rows = StreamSupport.stream(tuple._2.spliterator(), false)
 				.sorted(comparator)
 				.collect(Collectors.toList());
-		// 页面切片的生成，以及页面流的匹配
 		Long lastPageId = null;
+		List<Tuple2<String, Long>> list = new ArrayList<>();
 		for(Row row : rows) {
 			long pageid = row.getLong(3);
 			if(lastPageId == null) {
@@ -218,7 +150,7 @@ public class PageOneStepConvertRateService {
 				// 3_2
 				String targetPageSplit = targetPages[i - 1] + "_" + targetPages[i];
 				if(pageSplit.equals(targetPageSplit)) {
-					list.add(new Tuple2<>(pageSplit, 1));
+					list.add(new Tuple2<>(pageSplit, 1L));
 					break;
 				}
 			}
@@ -233,13 +165,14 @@ public class PageOneStepConvertRateService {
 	 * @param sessionid2actionsRDD
 	 * @return
 	 */
-	private static long getStartPagePv(Param param, JavaPairRDD<String, Iterable<Row>> sessionid2actionsRDD) {
+	private long getStartPagePv(Param param, JavaPairRDD<String, Iterable<Row>> sessionid2actionsRDD) {
 		String targetPageFlow = param.getTargetPageFlow();
 		final long startPageId = Long.parseLong(targetPageFlow.split(",")[0]);
-		return sessionid2actionsRDD
-				.flatMap(tuple -> StreamSupport.stream(tuple._2.spliterator(), true)
-						.filter(row -> row.getLong(3) == startPageId).collect(Collectors.toList())
-				).count();
+		BiFunction<Long, Tuple2<String, Iterable<Row>>, List<Row>> function = (startPageId1, t) -> StreamSupport
+				.stream(t._2.spliterator(), false)
+				.filter(row -> row.getLong(3) == startPageId1)
+				.collect(Collectors.toList());
+		return sessionid2actionsRDD.flatMap(tuple -> function.apply(startPageId, tuple)).count();
 	}
 
 	/**

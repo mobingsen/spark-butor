@@ -1,4 +1,4 @@
-package com.mbs.spark.util;
+package com.mbs.spark.tools;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;

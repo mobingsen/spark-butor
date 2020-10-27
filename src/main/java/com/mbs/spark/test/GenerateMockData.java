@@ -7,8 +7,8 @@ import java.io.OutputStreamWriter;
 import java.util.Random;
 import java.util.UUID;
 
-import com.mbs.spark.util.DateUtils;
-import com.mbs.spark.util.StringUtils;
+import com.mbs.spark.tools.DateUtils;
+import com.mbs.spark.tools.StringUtils;
 
 /**
  * 模拟数据程序

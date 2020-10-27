@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 
-import com.mbs.spark.util.DateUtils;
-import com.mbs.spark.util.StringUtils;
+import com.mbs.spark.tools.DateUtils;
+import com.mbs.spark.tools.StringUtils;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.sql.DataFrame;

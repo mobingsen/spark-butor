@@ -18,5 +18,4 @@ public class RandomPrefixUDF implements UDF2<String, Integer, String> {
 		int randNum = random.nextInt(10);
 		return randNum + "_" + val;
 	}
-
 }

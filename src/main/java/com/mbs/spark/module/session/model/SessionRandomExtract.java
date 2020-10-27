@@ -1,7 +1,7 @@
 package com.mbs.spark.module.session.model;
 
 import com.mbs.spark.constant.Constants;
-import com.mbs.spark.util.StringUtils;
+import com.mbs.spark.tools.StringUtils;
 import lombok.Getter;
 import lombok.Setter;
 
