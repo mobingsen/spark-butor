@@ -57,31 +57,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
-/**
- * 用户访问session分析Spark作业
- *
- * 接收用户创建的分析任务，用户可能指定的条件如下：
- *
- * 1、时间范围：起始日期~结束日期
- * 2、性别：男或女
- * 3、年龄范围
- * 4、职业：多选
- * 5、城市：多选
- * 6、搜索词：多个搜索词，只要某个session中的任何一个action搜索过指定的关键词，那么session就符合条件
- * 7、点击品类：多个品类，只要某个session中的任何一个action点击过某个品类，那么session就符合条件
- *
- * 我们的spark作业如何接受用户创建的任务？
- *
- * J2EE平台在接收用户创建任务的请求之后，会将任务信息插入MySQL的task表中，任务参数以JSON格式封装在task_param
- * 字段中
- *
- * 接着J2EE平台会执行我们的spark-submit shell脚本，并将taskid作为参数传递给spark-submit shell脚本
- * spark-submit shell脚本，在执行时，是可以接收参数的，并且会将接收的参数，传递给Spark作业的main函数
- * 参数就封装在main函数的args数组中
- *
- * 这是spark本身提供的特性
- *
- */
 @Service
 public class UserVisitSessionAnalyzeService {
 
@@ -545,15 +520,15 @@ public class UserVisitSessionAnalyzeService {
 	 */
 	private void calculateVisitLength(long visitLength, Accumulator<String> sessionAggrStatAccumulator) {
         ImmutableMap.<Range<Integer>, String>builder()
-                .put(Range.closed(1, 3), Constants.TIME_PERIOD_1s_3s)
-                .put(Range.closed(4, 6), Constants.TIME_PERIOD_4s_6s)
-                .put(Range.closed(7, 9), Constants.TIME_PERIOD_7s_9s)
-                .put(Range.closed(10, 30), Constants.TIME_PERIOD_10s_30s)
-                .put(Range.openClosed(30, 60), Constants.TIME_PERIOD_30s_60s)
-                .put(Range.openClosed(60, 180), Constants.TIME_PERIOD_1m_3m)
-                .put(Range.openClosed(180, 600), Constants.TIME_PERIOD_3m_10m)
-                .put(Range.openClosed(600, 1800), Constants.TIME_PERIOD_10m_30m)
-                .put(Range.greaterThan(1800), Constants.TIME_PERIOD_30m)
+                .put(Range.closed(1, 3), Constants._1s_3s)
+                .put(Range.closed(4, 6), Constants._4s_6s)
+                .put(Range.closed(7, 9), Constants._7s_9s)
+                .put(Range.closed(10, 30), Constants._10s_30s)
+                .put(Range.openClosed(30, 60), Constants._30s_60s)
+                .put(Range.openClosed(60, 180), Constants._1m_3m)
+                .put(Range.openClosed(180, 600), Constants._3m_10m)
+                .put(Range.openClosed(600, 1800), Constants._10m_30m)
+                .put(Range.greaterThan(1800), Constants._30m)
                 .build()
                 .entrySet().stream()
                 .filter(e -> e.getKey().contains((int) visitLength))
@@ -569,12 +544,12 @@ public class UserVisitSessionAnalyzeService {
 	 */
 	private void calculateStepLength(long stepLength, Accumulator<String> sessionAggrStatAccumulator) {
         ImmutableMap.<Range<Integer>, String>builder()
-                .put(Range.closed(1, 3), Constants.STEP_PERIOD_1_3)
-                .put(Range.closed(4, 6), Constants.STEP_PERIOD_4_6)
-                .put(Range.closed(7, 9), Constants.STEP_PERIOD_7_9)
-                .put(Range.closed(10, 30), Constants.STEP_PERIOD_10_30)
-                .put(Range.openClosed(30, 60), Constants.STEP_PERIOD_30_60)
-                .put(Range.greaterThan(60), Constants.STEP_PERIOD_60)
+                .put(Range.closed(1, 3), Constants._1_3)
+                .put(Range.closed(4, 6), Constants._4_6)
+                .put(Range.closed(7, 9), Constants._7_9)
+                .put(Range.closed(10, 30), Constants._10_30)
+                .put(Range.openClosed(30, 60), Constants._30_60)
+                .put(Range.greaterThan(60), Constants._60)
                 .build()
                 .entrySet().stream()
                 .filter(e -> e.getKey().contains((int) stepLength))

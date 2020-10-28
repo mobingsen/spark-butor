@@ -1,14 +1,13 @@
 package com.mbs.spark.module.session;
 
-import com.google.gson.reflect.TypeToken;
-import com.mbs.spark.tools.JsonTool;
-import com.mbs.spark.tools.StringUtils;
+import com.mbs.spark.constant.Constants;
 import org.apache.spark.AccumulatorParam;
 
-import com.mbs.spark.constant.Constants;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class SessionAggrStatAccumulator implements AccumulatorParam<String> {
 
@@ -16,22 +15,24 @@ public class SessionAggrStatAccumulator implements AccumulatorParam<String> {
 
 	@Override
 	public String zero(String v) {
-		return Constants.SESSION_COUNT + "=0|"
-				+ Constants.TIME_PERIOD_1s_3s + "=0|"
-				+ Constants.TIME_PERIOD_4s_6s + "=0|"
-				+ Constants.TIME_PERIOD_7s_9s + "=0|"
-				+ Constants.TIME_PERIOD_10s_30s + "=0|"
-				+ Constants.TIME_PERIOD_30s_60s + "=0|"
-				+ Constants.TIME_PERIOD_1m_3m + "=0|"
-				+ Constants.TIME_PERIOD_3m_10m + "=0|"
-				+ Constants.TIME_PERIOD_10m_30m + "=0|"
-				+ Constants.TIME_PERIOD_30m + "=0|"
-				+ Constants.STEP_PERIOD_1_3 + "=0|"
-				+ Constants.STEP_PERIOD_4_6 + "=0|"
-				+ Constants.STEP_PERIOD_7_9 + "=0|"
-				+ Constants.STEP_PERIOD_10_30 + "=0|"
-				+ Constants.STEP_PERIOD_30_60 + "=0|"
-				+ Constants.STEP_PERIOD_60 + "=0";
+		return Stream.of(
+				Constants.SESSION_COUNT,
+				Constants._1s_3s,
+				Constants._4s_6s,
+				Constants._7s_9s,
+				Constants._10s_30s,
+				Constants._30s_60s,
+				Constants._1m_3m,
+				Constants._3m_10m,
+				Constants._10m_30m,
+				Constants._30m,
+				Constants._1_3,
+				Constants._4_6,
+				Constants._7_9,
+				Constants._10_30,
+				Constants._30_60,
+				Constants._60
+		).map(k -> k + "=0").collect(Collectors.joining("|"));
 	}
 
 	@Override
