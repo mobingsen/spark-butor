@@ -37,7 +37,7 @@ import java.util.stream.StreamSupport;
  * 页面单跳转化率模块
  */
 @Service
-public class PageOneStepConvertRateService {
+public class PageService {
 
 	@Autowired
 	PageSplitConvertRateRepository pageSplitConvertRateRepository;

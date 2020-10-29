@@ -48,7 +48,7 @@ import java.util.stream.StreamSupport;
  * 广告点击流量实时统计
  */
 @Service
-public class AdClickRealTimeStatService {
+public class AdService {
 
     @Autowired
     SparkConfigurer sparkConfigurer;

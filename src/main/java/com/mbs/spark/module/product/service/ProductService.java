@@ -40,7 +40,7 @@ import java.util.stream.Collectors;
  * 各区域top3热门商品统计Spark作业
  */
 @Service
-public class AreaTop3ProductService {
+public class ProductService {
 
 	@Autowired
 	AreaTop3ProductRepository areaTop3ProductRepository;

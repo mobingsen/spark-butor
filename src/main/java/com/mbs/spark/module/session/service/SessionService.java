@@ -58,7 +58,7 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 @Service
-public class UserVisitSessionAnalyzeService {
+public class SessionService {
 
 	@Autowired
 	SessionAggrStatRepository sessionAggrStatRepository;
