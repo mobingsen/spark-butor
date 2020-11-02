@@ -15,12 +15,11 @@ import javax.persistence.TableGenerator;
 @Getter
 @Setter
 @Entity
-public class Top10Session {
+public class TopSession {
 
 	@Id
 	@TableGenerator(name = "IdGen", table = "tb_gen", allocationSize = 1)
 	@GeneratedValue(generator = "IdGen")
-	@Column(name = "id")
 	private Long id;
 	private long taskId;
 	private long categoryId;

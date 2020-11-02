@@ -3,29 +3,30 @@ package com.mbs.spark.module.session.service;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
 import com.google.gson.Gson;
-import com.mbs.spark.conf.SparkConfigurer;
+import com.mbs.spark.conf.SparkConfig;
 import com.mbs.spark.constant.Constants;
-import com.mbs.spark.module.product.model.Top10Category;
+import com.mbs.spark.module.session.model.TopCategory;
 import com.mbs.spark.module.session.CategorySortKey;
 import com.mbs.spark.module.session.SessionAggrStatAccumulator;
 import com.mbs.spark.module.session.model.SessionAggrStat;
 import com.mbs.spark.module.session.model.SessionDetail;
 import com.mbs.spark.module.session.model.SessionRandomExtract;
-import com.mbs.spark.module.session.model.Top10Session;
+import com.mbs.spark.module.session.model.TopSession;
 import com.mbs.spark.module.session.repository.SessionAggrStatRepository;
 import com.mbs.spark.module.session.repository.SessionDetailRepository;
 import com.mbs.spark.module.session.repository.SessionRandomExtractRepository;
-import com.mbs.spark.module.session.repository.Top10CategoryRepository;
-import com.mbs.spark.module.session.repository.Top10SessionRepository;
-import com.mbs.spark.module.task.model.Param;
-import com.mbs.spark.module.task.model.Task;
-import com.mbs.spark.module.task.repository.TaskRepository;
-import com.mbs.spark.test.MockData;
+import com.mbs.spark.module.session.repository.TopCategoryRepository;
+import com.mbs.spark.module.session.repository.TopSessionRepository;
+import com.mbs.spark.module.task.Param;
+import com.mbs.spark.module.task.Task;
+import com.mbs.spark.module.task.TaskRepository;
+import com.mbs.spark.mock.MockData;
 import com.mbs.spark.tools.DateUtils;
 import com.mbs.spark.tools.StringUtils;
 import com.mbs.spark.tools.ValidUtils;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
+import lombok.RequiredArgsConstructor;
 import org.apache.spark.Accumulator;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -36,7 +37,6 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.hive.HiveContext;
 import org.apache.spark.storage.StorageLevel;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import scala.Tuple2;
 
@@ -58,22 +58,16 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 @Service
+@RequiredArgsConstructor
 public class SessionService {
 
-	@Autowired
-	SessionAggrStatRepository sessionAggrStatRepository;
-	@Autowired
-	SessionDetailRepository sessionDetailRepository;
-	@Autowired
-	SessionRandomExtractRepository sessionRandomExtractRepository;
-	@Autowired
-	TaskRepository taskRepository;
-	@Autowired
-	Top10CategoryRepository top10CategoryRepository;
-	@Autowired
-	Top10SessionRepository top10SessionRepository;
-	@Autowired
-	SparkConfigurer sparkConfigurer;
+	private final SessionAggrStatRepository sessionAggrStatRepository;
+	private final SessionDetailRepository sessionDetailRepository;
+	private final SessionRandomExtractRepository sessionRandomExtractRepository;
+	private final TaskRepository taskRepository;
+	private final TopCategoryRepository topCategoryRepository;
+	private final TopSessionRepository topSessionRepository;
+	private final SparkConfig sparkConfig;
 
 	public void main(String[] args) {
 		// 构建Spark上下文
@@ -89,7 +83,7 @@ public class SessionService {
 				.set("spark.shuffle.io.retryWait", "60")
 				.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 				.registerKryoClasses(new Class[]{CategorySortKey.class, IntList.class});
-		if(sparkConfigurer.isLocal()) {
+		if(sparkConfig.isLocal()) {
 			conf.setMaster("local");
 		}
 		/*
@@ -101,16 +95,16 @@ public class SessionService {
 
 		JavaSparkContext sc = new JavaSparkContext(conf);
 //		sc.checkpointFile("hdfs://");
-		SQLContext sqlContext = sparkConfigurer.isLocal() ? new SQLContext(sc.sc()) : new HiveContext(sc.sc());
+		SQLContext sqlContext = sparkConfig.isLocal() ? new SQLContext(sc.sc()) : new HiveContext(sc.sc());
 
 		// 生成模拟测试数据
-		if(sparkConfigurer.isLocal()) {
+		if(sparkConfig.isLocal()) {
 			MockData.mock(sc, sqlContext);
 		}
 
 		// 创建需要使用的DAO组件
 		// 首先得查询出来指定的任务，并获取任务的查询参数
-		long taskid = sparkConfigurer.isLocal() ? sparkConfigurer.getTaskSession() : Long.parseLong(args[0]);
+		long taskid = sparkConfig.isLocal() ? sparkConfig.getTaskSession() : Long.parseLong(args[0]);
 		Task task = taskRepository.findById(taskid).orElse(null);
 		if(task == null) {
 			System.out.println(new Date() + ": cannot find this task with id [" + taskid + "].");
@@ -292,7 +286,7 @@ public class SessionService {
 	 * @param sqlContext
 	 */
 	private void mockData(JavaSparkContext sc, SQLContext sqlContext) {
-		if(sparkConfigurer.isLocal()) {
+		if(sparkConfig.isLocal()) {
 			MockData.mock(sc, sqlContext);
 		}
 	}
@@ -827,13 +821,13 @@ public class SessionService {
 			long clickCount = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(countInfo, "\\|", Constants.FIELD_CLICK_COUNT)));
 			long orderCount = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(countInfo, "\\|", Constants.FIELD_ORDER_COUNT)));
 			long payCount = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(countInfo, "\\|", Constants.FIELD_PAY_COUNT)));
-			Top10Category category = new Top10Category();
+			TopCategory category = new TopCategory();
 			category.setTaskId(taskid);
 			category.setCategoryId(categoryid);
 			category.setClickCount(clickCount);
 			category.setOrderCount(orderCount);
 			category.setPayCount(payCount);
-			top10CategoryRepository.save(category);
+			topCategoryRepository.save(category);
 		}
 		return top10CategoryList;
 	}
@@ -983,19 +977,19 @@ public class SessionService {
 						}
 					}
 					// 将数据写入MySQL表
-					List<Top10Session> sessions = Arrays.stream(top10Sessions)
+					List<TopSession> sessions = Arrays.stream(top10Sessions)
 							.filter(Objects::nonNull)
 							.map(sessionCount -> {
-								Top10Session session = new Top10Session();
+								TopSession session = new TopSession();
 								session.setTaskId(taskid);
 								session.setCategoryId(tuple._1);
 								session.setSessionId(sessionCount.split(",")[0]);
 								session.setClickCount(Long.parseLong(sessionCount.split(",")[1]));
 								return session;
 							}).collect(Collectors.toList());
-					top10SessionRepository.saveAll(sessions);
+					topSessionRepository.saveAll(sessions);
 					return sessions.stream()
-							.map(Top10Session::getSessionId)
+							.map(TopSession::getSessionId)
 							.map(sessionId -> new Tuple2<>(sessionId, sessionId))
 							.collect(Collectors.toList());
 				})

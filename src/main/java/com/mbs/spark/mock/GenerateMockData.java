@@ -1,4 +1,4 @@
-package com.mbs.spark.test;
+package com.mbs.spark.mock;
 
 import java.io.BufferedWriter;
 import java.io.FileOutputStream;

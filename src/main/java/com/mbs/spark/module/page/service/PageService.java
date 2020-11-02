@@ -1,14 +1,15 @@
 package com.mbs.spark.module.page.service;
 
-import com.mbs.spark.conf.SparkConfigurer;
+import com.mbs.spark.conf.SparkConfig;
 import com.mbs.spark.constant.Constants;
 import com.mbs.spark.module.page.model.PageSplitConvertRate;
 import com.mbs.spark.module.page.repository.PageSplitConvertRateRepository;
-import com.mbs.spark.module.task.model.Param;
-import com.mbs.spark.module.task.model.Task;
-import com.mbs.spark.module.task.repository.TaskRepository;
-import com.mbs.spark.test.MockData;
+import com.mbs.spark.module.task.Param;
+import com.mbs.spark.module.task.Task;
+import com.mbs.spark.module.task.TaskRepository;
+import com.mbs.spark.mock.MockData;
 import com.mbs.spark.tools.DateUtils;
+import lombok.RequiredArgsConstructor;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -17,7 +18,6 @@ import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.hive.HiveContext;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import scala.Tuple2;
 
@@ -37,29 +37,27 @@ import java.util.stream.StreamSupport;
  * 页面单跳转化率模块
  */
 @Service
+@RequiredArgsConstructor
 public class PageService {
 
-	@Autowired
-	PageSplitConvertRateRepository pageSplitConvertRateRepository;
-	@Autowired
-	TaskRepository taskRepository;
-	@Autowired
-	SparkConfigurer sparkConfigurer;
+	private final PageSplitConvertRateRepository pageSplitConvertRateRepository;
+	private final TaskRepository taskRepository;
+	private final SparkConfig sparkConfig;
 
 	public void main(String[] args) {
 		SparkConf conf = new SparkConf()
 				.setAppName(Constants.SPARK_APP_NAME_PAGE);
-		if(sparkConfigurer.isLocal()) {
+		if(sparkConfig.isLocal()) {
 			conf.setMaster("local");
 		}
 		JavaSparkContext sc = new JavaSparkContext(conf);
-		SQLContext sqlContext = sparkConfigurer.isLocal() ? new SQLContext(sc.sc()) : new HiveContext(sc.sc());
-		if(sparkConfigurer.isLocal()) {
+		SQLContext sqlContext = sparkConfig.isLocal() ? new SQLContext(sc.sc()) : new HiveContext(sc.sc());
+		if(sparkConfig.isLocal()) {
 			MockData.mock(sc, sqlContext);
 		}
 		long taskid = 0;
-		if(sparkConfigurer.isLocal()) {
-			taskid = sparkConfigurer.getTaskPage();
+		if(sparkConfig.isLocal()) {
+			taskid = sparkConfig.getTaskPage();
 		} else {
 			try {
 				if(args != null && args.length > 0) {
@@ -214,7 +212,7 @@ public class PageService {
 				.collect(Collectors.joining("|"));
 		PageSplitConvertRate pageSplitConvertRate = new PageSplitConvertRate();
 		pageSplitConvertRate.setTaskId(taskId);
-		pageSplitConvertRate.setConvertRate(convertRate);
+		pageSplitConvertRate.setRate(convertRate);
 		pageSplitConvertRateRepository.save(pageSplitConvertRate);
 	}
 

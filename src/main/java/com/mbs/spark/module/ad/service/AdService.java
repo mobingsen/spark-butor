@@ -1,11 +1,11 @@
 package com.mbs.spark.module.ad.service;
 
 import com.google.common.base.Optional;
-import com.mbs.spark.conf.KafkaConfigurer;
-import com.mbs.spark.conf.SparkConfigurer;
+import com.mbs.spark.conf.KafkaConfig;
+import com.mbs.spark.conf.SparkConfig;
 import com.mbs.spark.module.ad.model.AdBlacklist;
 import com.mbs.spark.module.ad.model.AdClickTrend;
-import com.mbs.spark.module.ad.model.AdProvinceTop3;
+import com.mbs.spark.module.ad.model.AdProvinceTop;
 import com.mbs.spark.module.ad.model.AdStat;
 import com.mbs.spark.module.ad.model.AdUserClickCount;
 import com.mbs.spark.module.ad.repository.AdBlackListRepository;
@@ -15,6 +15,7 @@ import com.mbs.spark.module.ad.repository.AdStatRepository;
 import com.mbs.spark.module.ad.repository.AdUserClickCountRepository;
 import com.mbs.spark.tools.DateUtils;
 import kafka.serializer.StringDecoder;
+import lombok.RequiredArgsConstructor;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -29,9 +30,7 @@ import org.apache.spark.streaming.Durations;
 import org.apache.spark.streaming.api.java.JavaPairDStream;
 import org.apache.spark.streaming.api.java.JavaPairInputDStream;
 import org.apache.spark.streaming.api.java.JavaStreamingContext;
-import org.apache.spark.streaming.api.java.JavaStreamingContextFactory;
 import org.apache.spark.streaming.kafka.KafkaUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import scala.Tuple2;
 
@@ -48,22 +47,16 @@ import java.util.stream.StreamSupport;
  * 广告点击流量实时统计
  */
 @Service
+@RequiredArgsConstructor
 public class AdService {
 
-    @Autowired
-    SparkConfigurer sparkConfigurer;
-    @Autowired
-    KafkaConfigurer kafkaConfig;
-    @Autowired
-    AdBlackListRepository adBlackListRepository;
-    @Autowired
-    AdClickTrendRepository adClickTrendRepository;
-    @Autowired
-    AdProvinceTopRepository adProvinceTopRepository;
-    @Autowired
-    AdStatRepository adStatRepository;
-    @Autowired
-    AdUserClickCountRepository adUserClickCountRepository;
+    private final SparkConfig sparkConfig;
+    private final KafkaConfig kafkaConfig;
+    private final AdBlackListRepository adBlackListRepository;
+    private final AdClickTrendRepository adClickTrendRepository;
+    private final AdProvinceTopRepository adProvinceTopRepository;
+    private final AdStatRepository adStatRepository;
+    private final AdUserClickCountRepository adUserClickCountRepository;
 
     public void main(String[] args) {
         SparkConf conf = new SparkConf()
@@ -266,19 +259,19 @@ public class AdService {
     }
 
     private void updateAdProvinceTop(Iterator<Row> iterator) {
-        List<AdProvinceTop3> tops = StreamSupport
+        List<AdProvinceTop> tops = StreamSupport
                 .stream(Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED), false)
                 .map(row -> {
                     String date = row.getString(0);
                     String province = row.getString(1);
                     long adId = row.getLong(2);
                     long clickCount = row.getLong(3);
-                    AdProvinceTop3 adProvinceTop3 = new AdProvinceTop3();
-                    adProvinceTop3.setDate(date);
-                    adProvinceTop3.setProvince(province);
-                    adProvinceTop3.setAdId(adId);
-                    adProvinceTop3.setClickCount(clickCount);
-                    return adProvinceTop3;
+                    AdProvinceTop adProvinceTop = new AdProvinceTop();
+                    adProvinceTop.setDate(date);
+                    adProvinceTop.setProvince(province);
+                    adProvinceTop.setAdId(adId);
+                    adProvinceTop.setClickCount(clickCount);
+                    return adProvinceTop;
                 }).collect(Collectors.toList());
         tops.stream().map(top -> top.getDate() + "_" + top.getProvince()).distinct()
                 .forEach(str -> adProvinceTopRepository.deleteByDateAndProvince(str.split("_")[0], str.split("_")[1]));

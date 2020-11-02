@@ -7,6 +7,5 @@ import org.springframework.stereotype.Repository;
 /**
  * Created by 小墨 on 2020/10/7 14:42
  */
-@Repository
 public interface AdBlackListRepository extends JpaRepository<AdBlacklist, Long> {
 }

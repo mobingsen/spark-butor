@@ -16,12 +16,11 @@ import javax.persistence.TableGenerator;
 @Getter
 @Setter
 @Entity
-public class AreaTop3Product {
+public class AreaTopProduct {
 
 	@Id
 	@TableGenerator(name = "IdGen", table = "tb_gen", allocationSize = 1)
 	@GeneratedValue(generator = "IdGen")
-	@Column(name = "id")
 	private Long id;
 	private long taskId;
 	private String area;
@@ -32,8 +31,8 @@ public class AreaTop3Product {
 	private String productName;
 	private String productStatus;
 
-	public static AreaTop3Product ctor(long taskId, Row row) {
-		AreaTop3Product product = new AreaTop3Product();
+	public static AreaTopProduct ctor(long taskId, Row row) {
+		AreaTopProduct product = new AreaTopProduct();
 		product.setTaskId(taskId);
 		product.setArea(row.getString(0));
 		product.setAreaLevel(row.getString(1));

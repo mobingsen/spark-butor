@@ -1,4 +1,4 @@
-package com.mbs.spark.module.task.model;
+package com.mbs.spark.module.task;
 
 import com.google.gson.Gson;
 import com.mbs.spark.converts.JsonConvert;

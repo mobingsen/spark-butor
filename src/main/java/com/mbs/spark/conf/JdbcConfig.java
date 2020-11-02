@@ -6,16 +6,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * Created by 小墨 on 2020/10/7 0:24
+ * Created by 小墨 on 2020/10/8 10:25
  */
 @Setter
 @Getter
 @Component
-@ConfigurationProperties(prefix = "spark")
-public class SparkConfigurer {
+@ConfigurationProperties(prefix = "spring.datasource")
+public class JdbcConfig {
 
-    private boolean local;
-    private int taskSession;
-    private int taskPage;
-    private int taskProduct;
+    private String url;
+    private String username;
+    private String password;
 }

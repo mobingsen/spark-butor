@@ -21,7 +21,6 @@ public class AdStat {
 	@Id
 	@TableGenerator(name = "IdGen", table = "tb_gen", allocationSize = 1)
 	@GeneratedValue(generator = "IdGen")
-	@Column(name = "id")
 	private Long id;
 	private String date;
 	private String province;

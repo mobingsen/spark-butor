@@ -1,18 +1,19 @@
 package com.mbs.spark.module.product.service;
 
-import com.mbs.spark.conf.JdbcConfigurer;
-import com.mbs.spark.conf.SparkConfigurer;
-import com.mbs.spark.module.product.model.AreaTop3Product;
-import com.mbs.spark.module.product.repository.AreaTop3ProductRepository;
+import com.mbs.spark.conf.JdbcConfig;
+import com.mbs.spark.conf.SparkConfig;
+import com.mbs.spark.module.product.model.AreaTopProduct;
+import com.mbs.spark.module.product.repository.AreaTopProductRepository;
 import com.mbs.spark.module.product.udf.ConcatLongStringUDF;
 import com.mbs.spark.module.product.udf.GetJsonObjectUDF;
 import com.mbs.spark.module.product.udf.GroupConcatDistinctUDAF;
 import com.mbs.spark.module.product.udf.RandomPrefixUDF;
 import com.mbs.spark.module.product.udf.RemoveRandomPrefixUDF;
-import com.mbs.spark.module.task.model.Param;
-import com.mbs.spark.module.task.model.Task;
-import com.mbs.spark.module.task.repository.TaskRepository;
-import com.mbs.spark.test.MockData;
+import com.mbs.spark.module.task.Param;
+import com.mbs.spark.module.task.Task;
+import com.mbs.spark.module.task.TaskRepository;
+import com.mbs.spark.mock.MockData;
+import lombok.RequiredArgsConstructor;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -25,7 +26,6 @@ import org.apache.spark.sql.hive.HiveContext;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import scala.Tuple2;
 
@@ -40,27 +40,24 @@ import java.util.stream.Collectors;
  * 各区域top3热门商品统计Spark作业
  */
 @Service
+@RequiredArgsConstructor
 public class ProductService {
 
-	@Autowired
-	AreaTop3ProductRepository areaTop3ProductRepository;
-	@Autowired
-	TaskRepository taskRepository;
-	@Autowired
-	SparkConfigurer sparkConfigurer;
-	@Autowired
-	JdbcConfigurer jdbcConfigurer;
+	private final AreaTopProductRepository areaTopProductRepository;
+	private final TaskRepository taskRepository;
+	private final SparkConfig sparkConfig;
+	private final JdbcConfig jdbcConfig;
 
 	public void main(String[] args) {
 		// 创建SparkConf
 		SparkConf conf = new SparkConf()
 				.setAppName("AreaTop3ProductSpark");
-		if(sparkConfigurer.isLocal()) {
+		if(sparkConfig.isLocal()) {
 			conf.setMaster("local");
 		}
 		// 构建Spark上下文
 		JavaSparkContext sc = new JavaSparkContext(conf);
-		SQLContext sqlContext = sparkConfigurer.isLocal() ? new SQLContext(sc.sc()) : new HiveContext(sc.sc());
+		SQLContext sqlContext = sparkConfig.isLocal() ? new SQLContext(sc.sc()) : new HiveContext(sc.sc());
 //		sqlContext.setConf("spark.sql.shuffle.partitions", "1000");
 //		sqlContext.setConf("spark.sql.autoBroadcastJoinThreshold", "20971520");
 		// 注册自定义函数
@@ -70,11 +67,11 @@ public class ProductService {
 		sqlContext.udf().register("remove_random_prefix", new RemoveRandomPrefixUDF(), DataTypes.StringType);
 		sqlContext.udf().register("group_concat_distinct", new GroupConcatDistinctUDAF());
 		// 准备模拟数据
-		if(sparkConfigurer.isLocal()) {
+		if(sparkConfig.isLocal()) {
 			MockData.mock(sc, sqlContext);
 		}
 		// 获取命令行传入的taskid，查询对应的任务参数
-		long taskid = sparkConfigurer.isLocal() ? sparkConfigurer.getTaskProduct() : Long.parseLong(args[0]);
+		long taskid = sparkConfig.isLocal() ? sparkConfig.getTaskProduct() : Long.parseLong(args[0]);
 		Optional<Task> taskOptional = taskRepository.findById(taskid);
 		if (!taskOptional.isPresent()) {
 			return;
@@ -104,10 +101,10 @@ public class ProductService {
 		// 所以可以直接将数据collect()到本地
 		// 用批量插入的方式，一次性插入mysql即可
 		List<Row> rows = areaTop3ProductRDD.collect();
-		List<AreaTop3Product> productList = rows.stream()
-				.map(row -> AreaTop3Product.ctor(taskid, row))
+		List<AreaTopProduct> productList = rows.stream()
+				.map(row -> AreaTopProduct.ctor(taskid, row))
 				.collect(Collectors.toList());
-		areaTop3ProductRepository.saveAll(productList);
+		areaTopProductRepository.saveAll(productList);
 		sc.close();
 	}
 
@@ -140,9 +137,9 @@ public class ProductService {
 	 */
 	private JavaPairRDD<Long, Row> getcityid2CityInfoRDD(SQLContext sqlContext) {
 		// 构建MySQL连接配置信息（直接从配置文件中获取）
-		String url = jdbcConfigurer.getUrl();
-		String user = jdbcConfigurer.getUsername();
-		String password = jdbcConfigurer.getPassword();
+		String url = jdbcConfig.getUrl();
+		String user = jdbcConfig.getUsername();
+		String password = jdbcConfig.getPassword();
 		Map<String, String> options = new HashMap<>();
 		options.put("url", url);
 		options.put("dbtable", "city_info");

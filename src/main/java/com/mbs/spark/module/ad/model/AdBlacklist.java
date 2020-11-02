@@ -20,9 +20,7 @@ public class AdBlacklist {
 	@Id
 	@TableGenerator(name = "IdGen", table = "tb_gen", allocationSize = 1)
 	@GeneratedValue(generator = "IdGen")
-	@Column(name = "id")
 	private Long id;
-	@Column
 	private long userId;
 
 	public static AdBlacklist ctor(long userId) {

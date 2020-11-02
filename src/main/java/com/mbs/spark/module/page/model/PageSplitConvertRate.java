@@ -20,8 +20,7 @@ public class PageSplitConvertRate {
 	@Id
 	@TableGenerator(name = "IdGen", table = "tb_gen", allocationSize = 1)
 	@GeneratedValue(generator = "IdGen")
-	@Column(name = "id")
 	private Long id;
 	private long taskId;
-	private String convertRate;
+	private String rate;
 }

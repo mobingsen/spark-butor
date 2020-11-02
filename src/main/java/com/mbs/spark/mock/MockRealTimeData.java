@@ -1,4 +1,4 @@
-package com.mbs.spark.test;
+package com.mbs.spark.mock;
 
 import java.util.Date;
 import java.util.HashMap;

@@ -1,4 +1,4 @@
-package com.mbs.spark.module.task.model;
+package com.mbs.spark.module.task;
 
 import lombok.Getter;
 import lombok.Setter;

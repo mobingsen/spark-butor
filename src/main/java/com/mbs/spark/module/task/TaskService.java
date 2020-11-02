@@ -1,18 +1,16 @@
-package com.mbs.spark.module.task.service;
+package com.mbs.spark.module.task;
 
 import com.google.common.collect.ImmutableMap;
-import com.mbs.spark.module.task.model.Task;
-import com.mbs.spark.module.task.repository.TaskRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 public class TaskService {
 
-    @Autowired
-    TaskRepository taskRepository;
+    private final TaskRepository taskRepository;
 
     public void add() {
         Task task = new Task();
