@@ -15,7 +15,7 @@ import javax.persistence.TableGenerator;
 @Getter
 @Setter
 @Entity
-public class PageSplitConvertRate {
+public class PageSliceRate {
 
 	@Id
 	@TableGenerator(name = "IdGen", table = "tb_gen", allocationSize = 1)

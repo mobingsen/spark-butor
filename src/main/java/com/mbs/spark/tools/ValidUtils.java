@@ -1,5 +1,9 @@
 package com.mbs.spark.tools;
 
+import java.util.Arrays;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
  * 校验工具类
  */
@@ -14,32 +18,21 @@ public class ValidUtils {
 	 * @param endParamField 结束参数字段
 	 * @return 校验结果
 	 */
-	public static boolean between(String data, String dataField,
-			String parameter, String startParamField, String endParamField) {
-		String startParamFieldStr = StringUtils.getFieldFromConcatString(
-				parameter, "\\|", startParamField);
-		String endParamFieldStr = StringUtils.getFieldFromConcatString(
-				parameter, "\\|", endParamField);
-		if(startParamFieldStr == null || endParamFieldStr == null) {
+	public static boolean between(String data, String dataField, String parameter, String startParamField, String endParamField) {
+		Map<String, Integer> map = Arrays.stream(parameter.split("\\|"))
+				.map(kv -> kv.split("="))
+				.collect(Collectors.toMap(arr -> arr[0], arr -> Integer.parseInt(arr[1])));
+		if(!map.containsKey(startParamField) || !map.containsKey(endParamField)) {
 			return true;
 		}
-
-		int startParamFieldValue = Integer.valueOf(startParamFieldStr);
-		int endParamFieldValue = Integer.valueOf(endParamFieldStr);
-
-		String dataFieldStr = StringUtils.getFieldFromConcatString(
-				data, "\\|", dataField);
-		if(dataFieldStr != null) {
-			int dataFieldValue = Integer.valueOf(dataFieldStr);
-			if(dataFieldValue >= startParamFieldValue &&
-					dataFieldValue <= endParamFieldValue) {
-				return true;
-			} else {
-				return false;
-			}
-		}
-
-		return false;
+		int startParamFieldValue = map.get(startParamField);
+		int endParamFieldValue = map.get(endParamField);
+		return Arrays.stream(data.split("\\|"))
+				.filter(kv -> kv.startsWith(dataField) && dataField.equals(kv.split("=")[0]))
+				.map(kv -> Integer.parseInt(kv.split("=")[1]))
+				.findAny()
+				.map(dfv -> dfv >= startParamFieldValue && dfv <= endParamFieldValue)
+				.orElse(false);
 	}
 
 	/**
@@ -52,15 +45,18 @@ public class ValidUtils {
 	 */
 	public static boolean in(String data, String dataField,
 			String parameter, String paramField) {
-		String paramFieldValue = StringUtils.getFieldFromConcatString(
-				parameter, "\\|", paramField);
+		Map<String, String> map = Arrays.stream(parameter.split("\\|"))
+				.map(kv -> kv.split("="))
+				.collect(Collectors.toMap(arr -> arr[0], arr -> arr[1]));
+		String paramFieldValue = map.get(paramField);
 		if(paramFieldValue == null) {
 			return true;
 		}
 		String[] paramFieldValueSplited = paramFieldValue.split(",");
-
-		String dataFieldValue = StringUtils.getFieldFromConcatString(
-				data, "\\|", dataField);
+		Map<String, String> dataMap = Arrays.stream(data.split("\\|"))
+				.map(kv -> kv.split("="))
+				.collect(Collectors.toMap(arr -> arr[0], arr -> arr[1]));
+		String dataFieldValue = dataMap.get(dataField);
 		if(dataFieldValue != null) {
 			String[] dataFieldValueSplited = dataFieldValue.split(",");
 
@@ -84,16 +80,18 @@ public class ValidUtils {
 	 * @param paramField 参数字段
 	 * @return 校验结果
 	 */
-	public static boolean equal(String data, String dataField,
-			String parameter, String paramField) {
-		String paramFieldValue = StringUtils.getFieldFromConcatString(
-				parameter, "\\|", paramField);
+	public static boolean equal(String data, String dataField, String parameter, String paramField) {
+		Map<String, String> map = Arrays.stream(parameter.split("\\|"))
+				.map(kv -> kv.split("="))
+				.collect(Collectors.toMap(arr -> arr[0], arr -> arr[1]));
+		String paramFieldValue = map.get(paramField);
 		if(paramFieldValue == null) {
 			return true;
 		}
-
-		String dataFieldValue = StringUtils.getFieldFromConcatString(
-				data, "\\|", dataField);
+		Map<String, String> dmap = Arrays.stream(data.split("\\|"))
+				.map(kv -> kv.split("="))
+				.collect(Collectors.toMap(arr -> arr[0], arr -> arr[1]));
+		String dataFieldValue = dmap.get(dataField);
 		if(dataFieldValue != null) {
 			if(dataFieldValue.equals(paramFieldValue)) {
 				return true;

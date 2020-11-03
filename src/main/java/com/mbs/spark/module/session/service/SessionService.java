@@ -5,28 +5,20 @@ import com.google.common.collect.Range;
 import com.google.gson.Gson;
 import com.mbs.spark.conf.SparkConfig;
 import com.mbs.spark.constant.Constants;
-import com.mbs.spark.module.session.model.TopCategory;
+import com.mbs.spark.mock.MockData;
 import com.mbs.spark.module.session.CategorySortKey;
 import com.mbs.spark.module.session.SessionAggrStatAccumulator;
-import com.mbs.spark.module.session.model.SessionAggrStat;
-import com.mbs.spark.module.session.model.SessionDetail;
-import com.mbs.spark.module.session.model.SessionRandomExtract;
-import com.mbs.spark.module.session.model.TopSession;
-import com.mbs.spark.module.session.repository.SessionAggrStatRepository;
-import com.mbs.spark.module.session.repository.SessionDetailRepository;
-import com.mbs.spark.module.session.repository.SessionRandomExtractRepository;
-import com.mbs.spark.module.session.repository.TopCategoryRepository;
-import com.mbs.spark.module.session.repository.TopSessionRepository;
+import com.mbs.spark.module.session.model.*;
+import com.mbs.spark.module.session.repository.*;
 import com.mbs.spark.module.task.Param;
 import com.mbs.spark.module.task.Task;
 import com.mbs.spark.module.task.TaskRepository;
-import com.mbs.spark.mock.MockData;
 import com.mbs.spark.tools.DateUtils;
-import com.mbs.spark.tools.StringUtils;
 import com.mbs.spark.tools.ValidUtils;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.spark.Accumulator;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -42,19 +34,10 @@ import scala.Tuple2;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Random;
-import java.util.Spliterator;
-import java.util.Spliterators;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 @Service
@@ -367,29 +350,24 @@ public class SessionService {
 						// 计算session访问步长
 						stepLength++;
 					}
-					String searchKeywords = StringUtils.trimComma(searchKeywordsBuffer.toString());
-					String clickCategoryIds = StringUtils.trimComma(clickCategoryIdsBuffer.toString());
+			String searchKeywords = Arrays.stream(searchKeywordsBuffer.toString().split(","))
+					.filter(StringUtils::isNotBlank).collect(Collectors.joining(","));
+					String clickCategoryIds = Arrays.stream(clickCategoryIdsBuffer.toString().split(","))
+					.filter(StringUtils::isNotBlank).collect(Collectors.joining(","));
 					// 计算session访问时长（秒）
 					long visitLength = (endTime.getTime() - startTime.getTime()) / 1000;
-					// 大家思考一下
-					// 我们返回的数据格式，即使<sessionid,partAggrInfo>
-					// 但是，这一步聚合完了以后，其实，我们是还需要将每一行数据，跟对应的用户信息进行聚合
-					// 问题就来了，如果是跟用户信息进行聚合的话，那么key，就不应该是sessionid
-					// 就应该是userid，才能够跟<userid,Row>格式的用户信息进行聚合
-					// 如果我们这里直接返回<sessionid,partAggrInfo>，还得再做一次mapToPair算子
-					// 将RDD映射成<userid,partAggrInfo>的格式，那么就多此一举
-					// 所以，我们这里其实可以直接，返回的数据格式，就是<userid,partAggrInfo>
-					// 然后跟用户信息join的时候，将partAggrInfo关联上userInfo
-					// 然后再直接将返回的Tuple的key设置成sessionid
-					// 最后的数据格式，还是<sessionid,fullAggrInfo>
-					// 聚合数据，用什么样的格式进行拼接？
-					// 我们这里统一定义，使用key=value|key=value
-					String partAggrInfo = Constants.FIELD_SESSION_ID + "=" + sessionid + "|"
-							+ Constants.FIELD_SEARCH_KEYWORDS + "=" + searchKeywords + "|"
-							+ Constants.FIELD_CLICK_CATEGORY_IDS + "=" + clickCategoryIds + "|"
-							+ Constants.FIELD_VISIT_LENGTH + "=" + visitLength + "|"
-							+ Constants.FIELD_STEP_LENGTH + "=" + stepLength + "|"
-							+ Constants.FIELD_START_TIME + "=" + DateUtils.formatTime(startTime);
+			String partAggrInfo = ImmutableMap.builder()
+					.put(Constants.FIELD_SESSION_ID, sessionid)
+					.put(Constants.FIELD_SEARCH_KEYWORDS, searchKeywords)
+					.put(Constants.FIELD_CLICK_CATEGORY_IDS, clickCategoryIds)
+					.put(Constants.FIELD_VISIT_LENGTH, visitLength)
+					.put(Constants.FIELD_STEP_LENGTH, stepLength)
+					.put(Constants.FIELD_START_TIME, DateUtils.formatTime(startTime))
+					.build()
+					.entrySet()
+					.stream()
+					.map(e -> e.getKey() + "=" + e.getValue())
+					.collect(Collectors.joining("|"));
 					return new Tuple2<>(userid, partAggrInfo);
 				});
 		// 查询所有用户数据，并映射成<userid,Row>的格式
@@ -404,19 +382,28 @@ public class SessionService {
 		// 将session粒度聚合数据，与用户信息进行join
 		JavaPairRDD<Long, Tuple2<String, Row>> userid2FullInfoRDD = userid2PartAggrInfoRDD.join(userid2InfoRDD);
 		// 对join起来的数据进行拼接，并且返回<sessionid,fullAggrInfo>格式的数据
-		return userid2FullInfoRDD.mapToPair(tuple -> {
+		return userid2FullInfoRDD
+				.mapToPair(tuple -> {
 					String partAggrInfo = tuple._2._1;
 					Row userInfoRow = tuple._2._2;
-					String sessionid = StringUtils.getFieldFromConcatString(partAggrInfo, "\\|", Constants.FIELD_SESSION_ID);
+					String sessionid = Arrays.stream(partAggrInfo.split("\\|"))
+							.filter(kv -> kv.contains(Constants.FIELD_SESSION_ID) && Constants.FIELD_SESSION_ID.equals(kv.split("=")[0]))
+							.map(kv -> kv.split("=")[1])
+							.findFirst().orElseGet(() -> partAggrInfo);
 					int age = userInfoRow.getInt(3);
 					String professional = userInfoRow.getString(4);
 					String city = userInfoRow.getString(5);
 					String sex = userInfoRow.getString(6);
-					String fullAggrInfo = partAggrInfo + "|"
-							+ Constants.FIELD_AGE + "=" + age + "|"
-							+ Constants.FIELD_PROFESSIONAL + "=" + professional + "|"
-							+ Constants.FIELD_CITY + "=" + city + "|"
-							+ Constants.FIELD_SEX + "=" + sex;
+					String fullAggrInfo = ImmutableMap.builder()
+							.put(Constants.FIELD_AGE, age)
+							.put(Constants.FIELD_PROFESSIONAL, professional)
+							.put(Constants.FIELD_CITY, city)
+							.put(Constants.FIELD_SEX, sex)
+							.build()
+							.entrySet()
+							.stream()
+							.map(e -> e.getKey() + "=" + e.getValue())
+							.collect(Collectors.joining("|", partAggrInfo + "|", ""));
 					return new Tuple2<>(sessionid, fullAggrInfo);
 				});
 	}
@@ -498,8 +485,11 @@ public class SessionService {
 			// 主要走到这一步，那么就是需要计数的session
 			sessionAggrStatAccumulator.add(Constants.SESSION_COUNT);
 			// 计算出session的访问时长和访问步长的范围，并进行相应的累加
-			long visitLength = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(aggrInfo, "\\|", Constants.FIELD_VISIT_LENGTH)));
-			long stepLength = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(aggrInfo, "\\|", Constants.FIELD_STEP_LENGTH)));
+			Map<String, Long> map = Arrays.stream(aggrInfo.split("\\|"))
+					.map(kv -> kv.split("="))
+					.collect(Collectors.toMap(arr -> arr[0], arr -> Long.parseLong(arr[1])));
+			long visitLength = map.get(Constants.FIELD_VISIT_LENGTH);
+			long stepLength = map.get(Constants.FIELD_STEP_LENGTH);
 			calculateVisitLength(visitLength, sessionAggrStatAccumulator);
 			calculateStepLength(stepLength, sessionAggrStatAccumulator);
 			return true;
@@ -573,32 +563,21 @@ public class SessionService {
 									  final long taskId,
 									  JavaPairRDD<String, String> sessionid2AggrInfoRDD,
 									  JavaPairRDD<String, Row> sessionid2actionRDD) {
-		//第一步，计算出每天每小时的session数量
 		// 获取<yyyy-MM-dd_HH,aggrInfo>格式的RDD
 		JavaPairRDD<String, String> time2sessionidRDD = sessionid2AggrInfoRDD
 				.mapToPair(tuple -> {
-					String startTime = StringUtils.getFieldFromConcatString(tuple._2, "\\|", Constants.FIELD_START_TIME);
+					String startTime = Arrays.stream(tuple._2.split("\\|"))
+							.filter(kv -> kv.startsWith(Constants.FIELD_START_TIME) && Constants.FIELD_START_TIME.equals(kv.split("=")[0]))
+							.map(kv -> kv.split("=")[1])
+							.findFirst().orElse("");
 					String dateHour = DateUtils.getDateHour(startTime);
 					return new Tuple2<>(dateHour, tuple._2);
 				});
-		/*
-		 * 思考一下：这里我们不要着急写大量的代码，做项目的时候，一定要用脑子多思考
-		 * 每天每小时的session数量，然后计算出每天每小时的session抽取索引，遍历每天每小时session
-		 * 首先抽取出的session的聚合数据，写入session_random_extract表
-		 * 所以第一个RDD的value，应该是session聚合数据
-		 */
-		// 得到每天每小时的session数量
-		/*
-		 * 每天每小时的session数量的计算
-		 * 是有可能出现数据倾斜的吧，这个是没有疑问的
-		 * 比如说大部分小时，一般访问量也就10万；但是，中午12点的时候，高峰期，一个小时1000万
-		 * 这个时候，就会发生数据倾斜
-		 * 我们就用这个countByKey操作，给大家演示第三种和第四种方案
-		 */
 		Map<String, Object> countMap = time2sessionidRDD.countByKey();
-		//第二步，使用按时间比例随机抽取算法，计算出每天每小时要抽取session的索引
-		// 将<yyyy-MM-dd_HH,count>格式的map，转换成<yyyy-MM-dd,<HH,count>>的格式
-        Map<String, Map<String, Long>> dateHourCountMap = countMap.entrySet().stream()
+		//第二步，使用按时间比例随机抽取算法，计算出每天每小时要抽取session的索引,将<yyyy-MM-dd_HH,count>格式的map，转换成<yyyy-MM-dd,<HH,count>>的格式
+        Map<String, Map<String, Long>> dateHourCountMap = countMap
+				.entrySet()
+				.stream()
                 .collect(Collectors.toMap(e -> e.getKey().split("_")[0],
                         e -> ImmutableMap.of(e.getKey().split("_")[1], Long.parseLong(String.valueOf(e.getValue())))));
 		// 开始实现我们的按时间比例随机抽取算法
@@ -803,9 +782,12 @@ public class SessionService {
 		JavaPairRDD<CategorySortKey, String> sortKey2countRDD = categoryid2countRDD
 				.mapToPair(tuple -> {
 					String countInfo = tuple._2;
-					long clickCount = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(countInfo, "\\|", Constants.FIELD_CLICK_COUNT)));
-					long orderCount = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(countInfo, "\\|", Constants.FIELD_ORDER_COUNT)));
-					long payCount = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(countInfo, "\\|", Constants.FIELD_PAY_COUNT)));
+					Map<String, Long> map = Arrays.stream(tuple._2.split("\\|"))
+							.map(kv -> kv.split("="))
+							.collect(Collectors.toMap(arr -> arr[0], arr -> Long.parseLong(arr[1])));
+					long clickCount = map.getOrDefault(Constants.FIELD_CLICK_COUNT, 0L);
+					long orderCount = map.getOrDefault(Constants.FIELD_ORDER_COUNT, 0L);
+					long payCount = map.getOrDefault(Constants.FIELD_PAY_COUNT, 0L);
 					CategorySortKey sortKey = new CategorySortKey(clickCount, orderCount, payCount);
 					return new Tuple2<>(sortKey, countInfo);
 				});
@@ -816,11 +798,13 @@ public class SessionService {
 		 */
 		List<Tuple2<CategorySortKey, String>> top10CategoryList = sortedCategoryCountRDD.take(10);
 		for(Tuple2<CategorySortKey, String> tuple: top10CategoryList) {
-			String countInfo = tuple._2;
-			long categoryid = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(countInfo, "\\|", Constants.FIELD_CATEGORY_ID)));
-			long clickCount = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(countInfo, "\\|", Constants.FIELD_CLICK_COUNT)));
-			long orderCount = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(countInfo, "\\|", Constants.FIELD_ORDER_COUNT)));
-			long payCount = Long.parseLong(Objects.requireNonNull(StringUtils.getFieldFromConcatString(countInfo, "\\|", Constants.FIELD_PAY_COUNT)));
+			Map<String, Long> map = Arrays.stream(tuple._2.split("\\|"))
+					.map(kv -> kv.split("="))
+					.collect(Collectors.toMap(arr -> arr[0], arr -> Long.parseLong(arr[1])));
+			long categoryid = map.getOrDefault(Constants.FIELD_CATEGORY_ID, 0L);
+			long clickCount = map.getOrDefault(Constants.FIELD_CLICK_COUNT, 0L);
+			long orderCount = map.getOrDefault(Constants.FIELD_ORDER_COUNT, 0L);
+			long payCount = map.getOrDefault(Constants.FIELD_PAY_COUNT, 0L);
 			TopCategory category = new TopCategory();
 			category.setTaskId(taskid);
 			category.setCategoryId(categoryid);
@@ -924,9 +908,13 @@ public class SessionService {
 								 List<Tuple2<CategorySortKey, String>> top10CategoryList,
 								 JavaPairRDD<String, Row> sessionid2detailRDD) {
 		// 第一步：将top10热门品类的id，生成一份RDD
+
 		List<Tuple2<Long, Long>> top10CategoryIdList = top10CategoryList.stream()
-				.map(category -> StringUtils.getFieldFromConcatString(category._2, "\\|", Constants.FIELD_CATEGORY_ID))
-				.filter(Objects::nonNull)
+				.flatMap(category -> Arrays.stream(category._2.split("\\|"))
+						.filter(kv -> kv.startsWith(Constants.FIELD_CATEGORY_ID) && Constants.FIELD_CATEGORY_ID.equals(kv.split("=")[0]))
+						.map(kv -> kv.split("=")[1])
+						.filter(StringUtils::isNotBlank)
+				)
 				.map(Long::parseLong)
 				.map(categoryId -> new Tuple2<>(categoryId, categoryId))
 				.collect(Collectors.toList());

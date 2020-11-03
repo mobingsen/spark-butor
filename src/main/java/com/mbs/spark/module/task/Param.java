@@ -3,6 +3,8 @@ package com.mbs.spark.module.task;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.List;
+
 /**
  * Created by 小墨 on 2020/10/8 0:11
  */

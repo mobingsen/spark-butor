@@ -2,8 +2,8 @@ package com.mbs.spark.module.page.service;
 
 import com.mbs.spark.conf.SparkConfig;
 import com.mbs.spark.constant.Constants;
-import com.mbs.spark.module.page.model.PageSplitConvertRate;
-import com.mbs.spark.module.page.repository.PageSplitConvertRateRepository;
+import com.mbs.spark.module.page.model.PageSliceRate;
+import com.mbs.spark.module.page.repository.PageSliceRateRepository;
 import com.mbs.spark.module.task.Param;
 import com.mbs.spark.module.task.Task;
 import com.mbs.spark.module.task.TaskRepository;
@@ -40,7 +40,7 @@ import java.util.stream.StreamSupport;
 @RequiredArgsConstructor
 public class PageService {
 
-	private final PageSplitConvertRateRepository pageSplitConvertRateRepository;
+	private final PageSliceRateRepository pageSliceRateRepository;
 	private final TaskRepository taskRepository;
 	private final SparkConfig sparkConfig;
 
@@ -210,10 +210,10 @@ public class PageService {
 		String convertRate = convertRateMap.entrySet().stream()
 				.map(entry -> entry.getKey() + "=" + entry.getValue())
 				.collect(Collectors.joining("|"));
-		PageSplitConvertRate pageSplitConvertRate = new PageSplitConvertRate();
-		pageSplitConvertRate.setTaskId(taskId);
-		pageSplitConvertRate.setRate(convertRate);
-		pageSplitConvertRateRepository.save(pageSplitConvertRate);
+		PageSliceRate pageSliceRate = new PageSliceRate();
+		pageSliceRate.setTaskId(taskId);
+		pageSliceRate.setRate(convertRate);
+		pageSliceRateRepository.save(pageSliceRate);
 	}
 
 }

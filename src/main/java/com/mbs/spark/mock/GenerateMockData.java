@@ -1,14 +1,14 @@
 package com.mbs.spark.mock;
 
+import com.mbs.spark.tools.DateUtils;
+
 import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.util.Random;
 import java.util.UUID;
-
-import com.mbs.spark.tools.DateUtils;
-import com.mbs.spark.tools.StringUtils;
+import java.util.function.Function;
 
 /**
  * 模拟数据程序
@@ -18,8 +18,6 @@ public class GenerateMockData {
 
 	/**
 	 * 模拟数据
-	 * @param sc
-	 * @param sqlContext
 	 */
 	public static void main(String[] args) {
 		BufferedWriter bw = null;
@@ -45,7 +43,8 @@ public class GenerateMockData {
 
 					for(int k = 0; k < random.nextInt(100); k++) {
 						long pageid = random.nextInt(10);
-						String actionTime = baseActionTime + ":" + StringUtils.fulfuill(String.valueOf(random.nextInt(59))) + ":" + StringUtils.fulfuill(String.valueOf(random.nextInt(59)));
+						Function<Integer, String> makeFunc = rdn -> String.valueOf(rdn).length() < 2 ? "0" + rdn : String.valueOf(rdn);
+						String actionTime = baseActionTime + ":" + makeFunc.apply(random.nextInt(59)) + ":" + makeFunc.apply(random.nextInt(59));
 						String searchKeyword = null;
 						Long clickProductId = null;
 						String orderCategoryIds = null;
