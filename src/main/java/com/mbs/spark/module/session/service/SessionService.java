@@ -53,7 +53,6 @@ public class SessionService {
 	private final SparkConfig sparkConfig;
 
 	public void main(String[] args) {
-		// 构建Spark上下文
 		SparkConf conf = new SparkConf()
 				.setAppName(Constants.SPARK_APP_NAME_SESSION)
 //				.set("spark.default.parallelism", "100")
@@ -144,10 +143,8 @@ public class SessionService {
 	 */
 	private static JavaPairRDD<String, String> aggregateBySession(JavaSparkContext sc, SQLContext sqlContext,
 			JavaPairRDD<String, Row> sessinoid2actionRDD) {
-		// 对行为数据按session粒度进行分组
 		JavaPairRDD<String, Iterable<Row>> sessionid2ActionsRDD = sessinoid2actionRDD.groupByKey();
-		// 对每一个session分组进行聚合，将session中所有的搜索词和点击品类都聚合起来
-		// 到此为止，获取的数据格式，如下：<userid,partAggrInfo(sessionid,searchKeywords,clickCategoryIds)>
+		// <userid,partAggrInfo(sessionid,searchKeywords,clickCategoryIds)>
 		JavaPairRDD<Long, String> userid2PartAggrInfoRDD = sessionid2ActionsRDD
 				.mapToPair(tuple -> {
 					String sessionid = tuple._1;
@@ -161,10 +158,10 @@ public class SessionService {
 					// session的访问步长
 					int stepLength = 0;
 					// 遍历session所有的访问行为
-					while(iterator.hasNext()) {
+					while (iterator.hasNext()) {
 						// 提取每个访问行为的搜索词字段和点击品类字段
 						Row row = iterator.next();
-						if(userid == null) {
+						if (userid == null) {
 							userid = row.getLong(1);
 						}
 						String searchKeyword = row.getString(5);
@@ -177,71 +174,68 @@ public class SessionService {
 						// 我们决定是否将搜索词或点击品类id拼接到字符串中去
 						// 首先要满足：不能是null值
 						// 其次，之前的字符串中还没有搜索词或者点击品类id
-						if(StringUtils.isNotEmpty(searchKeyword)) {
-							if(!searchKeywordsBuffer.toString().contains(searchKeyword)) {
+						if (StringUtils.isNotEmpty(searchKeyword)) {
+							if (!searchKeywordsBuffer.toString().contains(searchKeyword)) {
 								searchKeywordsBuffer.append(searchKeyword).append(",");
 							}
 						}
-						if(!clickCategoryIdsBuffer.toString().contains(String.valueOf(clickCategoryId))) {
+						if (!clickCategoryIdsBuffer.toString().contains(String.valueOf(clickCategoryId))) {
 							clickCategoryIdsBuffer.append(clickCategoryId).append(",");
 						}
 						// 计算session开始和结束时间
 						Date actionTime = DateUtils.parseTime(row.getString(4));
-						if(startTime == null) {
+						if (startTime == null) {
 							startTime = actionTime;
 						}
-						if(endTime == null) {
+						if (endTime == null) {
 							endTime = actionTime;
 						}
-						if(actionTime.before(startTime)) {
+						if (actionTime.before(startTime)) {
 							startTime = actionTime;
 						}
-						if(actionTime.after(endTime)) {
+						if (actionTime.after(endTime)) {
 							endTime = actionTime;
 						}
 						// 计算session访问步长
 						stepLength++;
 					}
-			String searchKeywords = Arrays.stream(searchKeywordsBuffer.toString().split(","))
-					.filter(StringUtils::isNotBlank).collect(Collectors.joining(","));
+					String searchKeywords = Arrays.stream(searchKeywordsBuffer.toString().split(","))
+							.filter(StringUtils::isNotBlank)
+							.collect(Collectors.joining(","));
 					String clickCategoryIds = Arrays.stream(clickCategoryIdsBuffer.toString().split(","))
-					.filter(StringUtils::isNotBlank).collect(Collectors.joining(","));
+							.filter(StringUtils::isNotBlank)
+							.collect(Collectors.joining(","));
 					// 计算session访问时长（秒）
 					long visitLength = (endTime.getTime() - startTime.getTime()) / 1000;
-			String partAggrInfo = ImmutableMap.builder()
-					.put(Constants.FIELD_SESSION_ID, sessionid)
-					.put(Constants.FIELD_SEARCH_KEYWORDS, searchKeywords)
-					.put(Constants.FIELD_CLICK_CATEGORY_IDS, clickCategoryIds)
-					.put(Constants.FIELD_VISIT_LENGTH, visitLength)
-					.put(Constants.FIELD_STEP_LENGTH, stepLength)
-					.put(Constants.FIELD_START_TIME, DateUtils.formatTime(startTime))
-					.build()
-					.entrySet()
-					.stream()
-					.map(e -> e.getKey() + "=" + e.getValue())
-					.collect(Collectors.joining("|"));
+					String partAggrInfo = ImmutableMap.builder()
+							.put(Constants.FIELD_SESSION_ID, sessionid)
+							.put(Constants.FIELD_SEARCH_KEYWORDS, searchKeywords)
+							.put(Constants.FIELD_CLICK_CATEGORY_IDS, clickCategoryIds)
+							.put(Constants.FIELD_VISIT_LENGTH, visitLength)
+							.put(Constants.FIELD_STEP_LENGTH, stepLength)
+							.put(Constants.FIELD_START_TIME, DateUtils.formatTime(startTime))
+							.build()
+							.entrySet()
+							.stream()
+							.map(e -> e.getKey() + "=" + e.getValue())
+							.collect(Collectors.joining("|"));
 					return new Tuple2<>(userid, partAggrInfo);
 				});
 		// 查询所有用户数据，并映射成<userid,Row>的格式
 		String sql = "select * from user_info";
-		JavaRDD<Row> userInfoRDD = sqlContext.sql(sql).javaRDD();
-		JavaPairRDD<Long, Row> userid2InfoRDD = userInfoRDD.mapToPair(row -> new Tuple2<>(row.getLong(0), row));
-		/*
-		 * 这里就可以说一下，比较适合采用reduce join转换为map join的方式
-		 * userid2PartAggrInfoRDD，可能数据量还是比较大，比如，可能在1千万数据
-		 * userid2InfoRDD，可能数据量还是比较小的，你的用户数量才10万用户
-		 */
-		// 将session粒度聚合数据，与用户信息进行join
-		JavaPairRDD<Long, Tuple2<String, Row>> userid2FullInfoRDD = userid2PartAggrInfoRDD.join(userid2InfoRDD);
-		// 对join起来的数据进行拼接，并且返回<sessionid,fullAggrInfo>格式的数据
-		return userid2FullInfoRDD
+		JavaPairRDD<Long, Row> userid2InfoRDD = sqlContext
+				.sql(sql)
+				.javaRDD()
+				.mapToPair(row -> new Tuple2<>(row.getLong(0), row));
+		return userid2PartAggrInfoRDD
+				.join(userid2InfoRDD)
+				// 对join起来的数据进行拼接，并且返回<sessionid,fullAggrInfo>格式的数据
 				.mapToPair(tuple -> {
-					String partAggrInfo = tuple._2._1;
-					Row userInfoRow = tuple._2._2;
-					String sessionid = Arrays.stream(partAggrInfo.split("\\|"))
+					String sessionId = Arrays.stream(tuple._2._1.split("\\|"))
 							.filter(kv -> kv.contains(Constants.FIELD_SESSION_ID) && Constants.FIELD_SESSION_ID.equals(kv.split("=")[0]))
 							.map(kv -> kv.split("=")[1])
-							.findFirst().orElseGet(() -> partAggrInfo);
+							.findFirst().orElseGet(() -> tuple._2._1);
+					Row userInfoRow = tuple._2._2;
 					int age = userInfoRow.getInt(3);
 					String professional = userInfoRow.getString(4);
 					String city = userInfoRow.getString(5);
@@ -255,8 +249,8 @@ public class SessionService {
 							.entrySet()
 							.stream()
 							.map(e -> e.getKey() + "=" + e.getValue())
-							.collect(Collectors.joining("|", partAggrInfo + "|", ""));
-					return new Tuple2<>(sessionid, fullAggrInfo);
+							.collect(Collectors.joining("|", tuple._2._1 + "|", ""));
+					return new Tuple2<>(sessionId, fullAggrInfo);
 				});
 	}
 
@@ -270,9 +264,6 @@ public class SessionService {
 	        JavaPairRDD<String, String> sessionid2AggrInfoRDD,
 			final Param param,
             final Accumulator<String> sessionAggrStatAccumulator) {
-		// 为了使用我们后面的ValieUtils，所以，首先将所有的筛选参数拼接成一个连接串
-		// 此外，这里其实大家不要觉得是多此一举
-		// 其实我们是给后面的性能优化埋下了一个伏笔
 		String startAge = param.getStartAge();
 		String endAge = param.getEndAge();
 		String professionals = param.getProfessionals();
@@ -421,28 +412,19 @@ public class SessionService {
 					String startTime = Arrays.stream(tuple._2.split("\\|"))
 							.filter(kv -> kv.startsWith(Constants.FIELD_START_TIME) && Constants.FIELD_START_TIME.equals(kv.split("=")[0]))
 							.map(kv -> kv.split("=")[1])
-							.findFirst().orElse("");
+							.findFirst()
+							.orElse("");
 					String dateHour = DateUtils.getDateHour(startTime);
 					return new Tuple2<>(dateHour, tuple._2);
 				});
-		Map<String, Object> countMap = time2sessionidRDD.countByKey();
-		//第二步，使用按时间比例随机抽取算法，计算出每天每小时要抽取session的索引,将<yyyy-MM-dd_HH,count>格式的map，转换成<yyyy-MM-dd,<HH,count>>的格式
-        Map<String, Map<String, Long>> dateHourCountMap = countMap
+		Map<String, Map<String, Long>> dateHourCountMap = time2sessionidRDD
+				.countByKey()
 				.entrySet()
 				.stream()
                 .collect(Collectors.toMap(e -> e.getKey().split("_")[0],
                         e -> ImmutableMap.of(e.getKey().split("_")[1], Long.parseLong(String.valueOf(e.getValue())))));
-		// 开始实现我们的按时间比例随机抽取算法
-		// 总共要抽取100个session，先按照天数，进行平分
 		int extractNumberPerDay = 100 / dateHourCountMap.size();
 		// <date,<hour,(3,5,20,102)>>
-		/*
-		 * session随机抽取功能
-		 * 用到了一个比较大的变量，随机抽取索引map
-		 * 之前是直接在算子里面使用了这个map，那么根据我们刚才讲的这个原理，每个task都会拷贝一份map副本
-		 * 还是比较消耗内存和网络传输性能的
-		 * 将map做成广播变量
-		 */
 		Map<String, Map<String, List<Integer>>> dateHourExtractMap = new HashMap<>();
 		Random random = new Random();
 		for(Map.Entry<String, Map<String, Long>> dateHourCountEntry : dateHourCountMap.entrySet()) {
@@ -457,10 +439,7 @@ public class SessionService {
 				long count = hourCountEntry.getValue();
 				// 计算每个小时的session数量，占据当天总session数量的比例，直接乘以每天要抽取的数量
 				// 就可以计算出，当前小时需要抽取的session数量
-				int hourExtractNumber = (int)(((double)count / (double)sessionCount) * extractNumberPerDay);
-				if(hourExtractNumber > count) {
-					hourExtractNumber = (int) count;
-				}
+				long hourExtractNumber = Math.min((count / sessionCount) * extractNumberPerDay, count);
 				// 先获取当前小时的存放随机数的list
 				List<Integer> extractIndexList = hourExtractMap.computeIfAbsent(hour, k -> new ArrayList<>());
 				// 生成上面计算出来的数量的随机数
