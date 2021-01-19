@@ -1,6 +1,7 @@
 package com.mbs.spark.mock;
 
-import com.mbs.spark.tools.DateUtils;
+import cn.hutool.core.date.DatePattern;
+import cn.hutool.core.date.DateUtil;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.sql.DataFrame;
@@ -10,6 +11,7 @@ import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
 
@@ -27,7 +29,7 @@ public class MockData {
 	public static void mock(JavaSparkContext sc, SQLContext sqlContext) {
 		List<Row> rows = new ArrayList<>();
 		String[] searchKeywords = new String[] {"火锅", "蛋糕", "重庆辣子鸡", "重庆小面", "呷哺呷哺", "新辣道鱼火锅", "国贸大厦", "太古商场", "日本料理", "温泉"};
-		String date = DateUtils.getTodayDate();
+		String date = DateUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
 		String[] actions = new String[]{"search", "click", "order", "pay"};
 		Random random = new Random();
 		for(int i = 0; i < 100; i++) {

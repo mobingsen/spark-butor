@@ -15,7 +15,7 @@ import javax.persistence.TableGenerator;
  */
 @Getter
 @Setter
-@Entity
+@Entity(name = "tb_area_top_product")
 public class AreaTopProduct {
 
 	@Id

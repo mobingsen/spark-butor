@@ -1,19 +1,13 @@
 package com.mbs.spark.module.ad.service;
 
+import cn.hutool.core.date.DatePattern;
+import cn.hutool.core.date.DateTime;
+import cn.hutool.core.date.DateUtil;
 import com.google.common.base.Optional;
 import com.mbs.spark.conf.KafkaConfig;
 import com.mbs.spark.conf.SparkConfig;
-import com.mbs.spark.module.ad.model.AdBlacklist;
-import com.mbs.spark.module.ad.model.AdClickTrend;
-import com.mbs.spark.module.ad.model.AdProvinceTop;
-import com.mbs.spark.module.ad.model.AdStat;
-import com.mbs.spark.module.ad.model.AdUserClickCount;
-import com.mbs.spark.module.ad.repository.AdBlackListRepository;
-import com.mbs.spark.module.ad.repository.AdClickTrendRepository;
-import com.mbs.spark.module.ad.repository.AdProvinceTopRepository;
-import com.mbs.spark.module.ad.repository.AdStatRepository;
-import com.mbs.spark.module.ad.repository.AdUserClickCountRepository;
-import com.mbs.spark.tools.DateUtils;
+import com.mbs.spark.module.ad.model.*;
+import com.mbs.spark.module.ad.repository.*;
 import kafka.serializer.StringDecoder;
 import lombok.RequiredArgsConstructor;
 import org.apache.spark.SparkConf;
@@ -34,12 +28,7 @@ import org.apache.spark.streaming.kafka.KafkaUtils;
 import org.springframework.stereotype.Service;
 import scala.Tuple2;
 
-import java.util.Arrays;
-import java.util.Date;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Spliterator;
-import java.util.Spliterators;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -161,7 +150,8 @@ public class AdService {
         String key = tuple._1;
         String[] keyArr = key.split("_");
         // yyyyMMdd -> yyyy-MM-dd
-        String date = DateUtils.formatDate(DateUtils.parseDateKey(keyArr[0]));
+        final DateTime dateTime = DateUtil.parse(keyArr[0], DatePattern.PURE_DATE_PATTERN);
+        String date = DateUtil.format(dateTime, DatePattern.NORM_DATE_PATTERN);
         long userId = Long.parseLong(keyArr[1]);
         long adId = Long.parseLong(keyArr[2]);
         // 从mysql中查询指定日期指定用户对指定广告的点击量
@@ -175,7 +165,8 @@ public class AdService {
                 .stream(Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED), false)
                 .map(tuple -> {
                     String[] tupleKey = tuple._1.split("_");
-                    String date = DateUtils.formatDate(DateUtils.parseDateKey(tupleKey[0]));
+                    final DateTime dateTime = DateUtil.parse(tupleKey[0], DatePattern.PURE_DATE_PATTERN);
+                    String date = DateUtil.format(dateTime, DatePattern.NORM_DATE_PATTERN);
                     // yyyy-MM-dd
                     long userId = Long.parseLong(tupleKey[1]);
                     long adId = Long.parseLong(tupleKey[2]);
@@ -195,8 +186,8 @@ public class AdService {
         String[] logArr = log.split(" ");
         // 提取出日期（yyyyMMdd）、userId、adId
         String timestamp = logArr[0];
-        Date date = new Date(Long.parseLong(timestamp));
-        String dateKey = DateUtils.formatDateKey(date);
+        final Date date = new Date(Long.parseLong(timestamp));
+        String dateKey = DateUtil.format(date, DatePattern.NORM_DATE_PATTERN);
         long userId = Long.parseLong(logArr[3]);
         long adId = Long.parseLong(logArr[4]);
         return new Tuple2<>(dateKey + "_" + userId + "_" + adId, 1L);
@@ -225,7 +216,7 @@ public class AdService {
         String[] logArr = log.split(" ");
         String timestamp = logArr[0];
         Date date = new Date(Long.parseLong(timestamp));
-        String dateKey = DateUtils.formatDateKey(date);    // yyyyMMdd
+        String dateKey = DateUtil.format(date, DatePattern.PURE_DATE_PATTERN);    // yyyyMMdd
         String province = logArr[1];
         String city = logArr[2];
         long adId = Long.parseLong(logArr[4]);
@@ -316,7 +307,8 @@ public class AdService {
 
     private Row getDailyAdClickCountRow(Tuple2<String, Long> tuple) {
         String[] keyArr = tuple._1.split("_");
-        String date = DateUtils.formatDate(DateUtils.parseDateKey(keyArr[0]));
+        final DateTime dateTime = DateUtil.parse(keyArr[0], DatePattern.PURE_DATE_PATTERN);
+        String date = DateUtil.format(dateTime, DatePattern.NORM_DATE_PATTERN);
         String province = keyArr[1];
         long adId = Long.parseLong(keyArr[2]);
         long clickCount = tuple._2;
@@ -352,7 +344,8 @@ public class AdService {
     private Tuple2<String, Long> doDateAdIdAndOneLong(Tuple2<String, String> tuple) {
         // timestamp province city userId adId
         String[] logArr = tuple._2.split(" ");
-        String timeMinute = DateUtils.formatTimeMinute(new Date(Long.parseLong(logArr[0])));
+        final Date date = new Date(Long.parseLong(logArr[0]));
+        String timeMinute = DateUtil.format(date, DatePattern.NORM_DATETIME_MINUTE_PATTERN);
         long adId = Long.parseLong(logArr[4]);
         return new Tuple2<>(timeMinute + "_" + adId, 1L);
     }
@@ -366,7 +359,8 @@ public class AdService {
                     String dateMinute = keyArr[0];
                     long adId = Long.parseLong(keyArr[1]);
                     long clickCount = tuple._2;
-                    String date = DateUtils.formatDate(DateUtils.parseDateKey(dateMinute.substring(0, 8)));
+                    final DateTime dateTime = DateUtil.parse(dateMinute.substring(0, 8), DatePattern.PURE_DATE_PATTERN);
+                    String date = DateUtil.format(dateTime, DatePattern.NORM_DATE_PATTERN);
                     String hour = dateMinute.substring(8, 10);
                     String minute = dateMinute.substring(10);
                     AdClickTrend adClickTrend = new AdClickTrend();

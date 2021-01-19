@@ -14,7 +14,7 @@ import javax.persistence.TableGenerator;
  */
 @Getter
 @Setter
-@Entity
+@Entity(name = "tb_ad_click_trend")
 public class AdClickTrend {
 
 	@Id

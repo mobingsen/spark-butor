@@ -1,6 +1,5 @@
 package com.mbs.spark.module.product.udf;
 
-import com.mbs.spark.tools.JsonTool;
 import org.apache.spark.sql.api.java.UDF2;
 
 public class GetJsonObjectUDF implements UDF2<String, String, String> {

@@ -15,7 +15,7 @@ import javax.persistence.TableGenerator;
  */
 @Getter
 @Setter
-@Entity
+@Entity(name = "tb_session_detail")
 public class SessionDetail {
 
 	@Id

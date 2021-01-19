@@ -14,7 +14,7 @@ import javax.persistence.TableGenerator;
  */
 @Getter
 @Setter
-@Entity
+@Entity(name = "tb_session_aggr_stat")
 public class SessionAggrStat {
 
 	@Id

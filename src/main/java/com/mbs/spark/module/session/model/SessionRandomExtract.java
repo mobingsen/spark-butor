@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
  */
 @Getter
 @Setter
-@Entity
+@Entity(name = "tb_session_random_extract")
 public class SessionRandomExtract {
 
 	@Id

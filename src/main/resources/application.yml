@@ -1,4 +1,5 @@
-
+server:
+  port: 9000
 spring:
   application:
     name: Spark Pro
@@ -30,5 +31,6 @@ spark:
     product: 0
 
 kafka:
-  brokers: 192.168.1.105:9092,192.168.1.106:9092,192.168.1.107:9092
+  brokers: 127.0.0.1:9092
   topics: AdRealTimeLog
+

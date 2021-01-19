@@ -14,7 +14,7 @@ import javax.persistence.TableGenerator;
  */
 @Getter
 @Setter
-@Entity
+@Entity(name = "tb_page_slice_rate")
 public class PageSliceRate {
 
 	@Id

@@ -1,5 +1,8 @@
 package com.mbs.spark.module.session.service;
 
+import cn.hutool.core.date.DatePattern;
+import cn.hutool.core.date.DateTime;
+import cn.hutool.core.date.DateUtil;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
 import com.google.gson.Gson;
@@ -13,8 +16,6 @@ import com.mbs.spark.module.session.repository.*;
 import com.mbs.spark.module.task.Param;
 import com.mbs.spark.module.task.Task;
 import com.mbs.spark.module.task.TaskRepository;
-import com.mbs.spark.tools.DateUtils;
-import com.mbs.spark.tools.ValidUtils;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +38,6 @@ import java.math.RoundingMode;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 @Service
@@ -183,7 +183,7 @@ public class SessionService {
 							clickCategoryIdsBuffer.append(clickCategoryId).append(",");
 						}
 						// 计算session开始和结束时间
-						Date actionTime = DateUtils.parseTime(row.getString(4));
+						final DateTime actionTime = DateUtil.parse(row.getString(4), DatePattern.NORM_DATETIME_PATTERN);
 						if (startTime == null) {
 							startTime = actionTime;
 						}
@@ -213,7 +213,7 @@ public class SessionService {
 							.put(Constants.FIELD_CLICK_CATEGORY_IDS, clickCategoryIds)
 							.put(Constants.FIELD_VISIT_LENGTH, visitLength)
 							.put(Constants.FIELD_STEP_LENGTH, stepLength)
-							.put(Constants.FIELD_START_TIME, DateUtils.formatTime(startTime))
+							.put(Constants.FIELD_START_TIME, DateUtil.format(startTime, DatePattern.NORM_DATETIME_PATTERN))
 							.build()
 							.entrySet()
 							.stream()
@@ -288,25 +288,25 @@ public class SessionService {
 			String aggrInfo = tuple._2;
 			// 接着，依次按照筛选条件进行过滤
 			// 按照年龄范围进行过滤（startAge、endAge）
-			if(!ValidUtils.between(aggrInfo, Constants.FIELD_AGE, parameter, Constants.PARAM_START_AGE, Constants.PARAM_END_AGE)) {
+			if(!between(aggrInfo, Constants.FIELD_AGE, parameter, Constants.PARAM_START_AGE, Constants.PARAM_END_AGE)) {
 				return false;
 			}
 			// 按照职业范围进行过滤（professionals）
 			// 互联网,IT,软件
 			// 互联网
-			if(!ValidUtils.in(aggrInfo, Constants.FIELD_PROFESSIONAL, parameter, Constants.PARAM_PROFESSIONALS)) {
+			if(!in(aggrInfo, Constants.FIELD_PROFESSIONAL, parameter, Constants.PARAM_PROFESSIONALS)) {
 				return false;
 			}
 			// 按照城市范围进行过滤（cities）
 			// 北京,上海,广州,深圳
 			// 成都
-			if(!ValidUtils.in(aggrInfo, Constants.FIELD_CITY, parameter, Constants.PARAM_CITIES)) {
+			if(!in(aggrInfo, Constants.FIELD_CITY, parameter, Constants.PARAM_CITIES)) {
 				return false;
 			}
 			// 按照性别进行过滤
 			// 男/女
 			// 男，女
-			if(!ValidUtils.equal(aggrInfo, Constants.FIELD_SEX, parameter, Constants.PARAM_SEX)) {
+			if(!equal(aggrInfo, Constants.FIELD_SEX, parameter, Constants.PARAM_SEX)) {
 				return false;
 			}
 			// 按照搜索词进行过滤
@@ -314,11 +314,11 @@ public class SessionService {
 			// 我们的筛选条件可能是 火锅,串串香,iphone手机
 			// 那么，in这个校验方法，主要判定session搜索的词中，有任何一个，与筛选条件中
 			// 任何一个搜索词相当，即通过
-			if(!ValidUtils.in(aggrInfo, Constants.FIELD_SEARCH_KEYWORDS, parameter, Constants.PARAM_KEYWORDS)) {
+			if(!in(aggrInfo, Constants.FIELD_SEARCH_KEYWORDS, parameter, Constants.PARAM_KEYWORDS)) {
 				return false;
 			}
 			// 按照点击品类id进行过滤
-			if(!ValidUtils.in(aggrInfo, Constants.FIELD_CLICK_CATEGORY_IDS, parameter, Constants.PARAM_CATEGORY_IDS)) {
+			if(!in(aggrInfo, Constants.FIELD_CLICK_CATEGORY_IDS, parameter, Constants.PARAM_CATEGORY_IDS)) {
 				return false;
 			}
 			// 如果经过了之前的多个过滤条件之后，程序能够走到这里
@@ -339,6 +339,86 @@ public class SessionService {
 		});
 	}
 
+	/**
+	 * 校验数据中的指定字段，是否在指定范围内
+	 * @param data 数据
+	 * @param dataField 数据字段
+	 * @param parameter 参数
+	 * @param paramField 参数字段
+	 * @return 校验结果
+	 */
+	public static boolean equal(String data, String dataField, String parameter, String paramField) {
+		Map<String, String> map = Arrays.stream(parameter.split("\\|"))
+				.map(kv -> kv.split("="))
+				.collect(Collectors.toMap(arr -> arr[0], arr -> arr[1]));
+		String paramFieldValue = map.get(paramField);
+		if(paramFieldValue == null) {
+			return true;
+		}
+		Map<String, String> dmap = Arrays.stream(data.split("\\|"))
+				.map(kv -> kv.split("="))
+				.collect(Collectors.toMap(arr -> arr[0], arr -> arr[1]));
+		String dataFieldValue = dmap.get(dataField);
+		if(dataFieldValue != null) {
+			if(dataFieldValue.equals(paramFieldValue)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * 校验数据中的指定字段，是否有值与参数字段的值相同
+	 * @param data 数据
+	 * @param dataField 数据字段
+	 * @param parameter 参数
+	 * @param paramField 参数字段
+	 * @return 校验结果
+	 */
+	public static boolean in(String data, String dataField,
+							 String parameter, String paramField) {
+		Map<String, String> map = Arrays.stream(parameter.split("\\|"))
+				.map(kv -> kv.split("="))
+				.collect(Collectors.toMap(arr -> arr[0], arr -> arr[1]));
+		String paramFieldValue = map.get(paramField);
+		if(paramFieldValue == null) {
+			return true;
+		}
+		String[] paramFieldValueSplited = paramFieldValue.split(",");
+		Map<String, String> dataMap = Arrays.stream(data.split("\\|"))
+				.map(kv -> kv.split("="))
+				.collect(Collectors.toMap(arr -> arr[0], arr -> arr[1]));
+		String dataFieldValue = dataMap.get(dataField);
+		if(dataFieldValue != null) {
+			String[] dataFieldValueSplited = dataFieldValue.split(",");
+
+			for(String singleDataFieldValue : dataFieldValueSplited) {
+				for(String singleParamFieldValue : paramFieldValueSplited) {
+					if(singleDataFieldValue.equals(singleParamFieldValue)) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	public boolean between(String data, String dataField, String parameter, String startParamField, String endParamField) {
+		Map<String, Integer> map = Arrays.stream(parameter.split("\\|"))
+				.map(kv -> kv.split("="))
+				.collect(Collectors.toMap(arr -> arr[0], arr -> Integer.parseInt(arr[1])));
+		if(!map.containsKey(startParamField) || !map.containsKey(endParamField)) {
+			return true;
+		}
+		int startParamFieldValue = map.get(startParamField);
+		int endParamFieldValue = map.get(endParamField);
+		return Arrays.stream(data.split("\\|"))
+				.filter(kv -> kv.startsWith(dataField) && dataField.equals(kv.split("=")[0]))
+				.map(kv -> Integer.parseInt(kv.split("=")[1]))
+				.findAny()
+				.map(dfv -> dfv >= startParamFieldValue && dfv <= endParamFieldValue)
+				.orElse(false);
+	}
 
 	/**
 	 * 计算访问时长范围
@@ -414,7 +494,8 @@ public class SessionService {
 							.map(kv -> kv.split("=")[1])
 							.findFirst()
 							.orElse("");
-					String dateHour = DateUtils.getDateHour(startTime);
+					// yyyy-MM-dd_HH
+					final String dateHour = startTime.substring(0, startTime.indexOf(":"));
 					return new Tuple2<>(dateHour, tuple._2);
 				});
 		Map<String, Map<String, Long>> dateHourCountMap = time2sessionidRDD

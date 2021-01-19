@@ -1,14 +1,16 @@
 package com.mbs.spark.module.page.service;
 
+import cn.hutool.core.date.DatePattern;
+import cn.hutool.core.date.DateTime;
+import cn.hutool.core.date.DateUtil;
 import com.mbs.spark.conf.SparkConfig;
 import com.mbs.spark.constant.Constants;
+import com.mbs.spark.mock.MockData;
 import com.mbs.spark.module.page.model.PageSliceRate;
 import com.mbs.spark.module.page.repository.PageSliceRateRepository;
 import com.mbs.spark.module.task.Param;
 import com.mbs.spark.module.task.Task;
 import com.mbs.spark.module.task.TaskRepository;
-import com.mbs.spark.mock.MockData;
-import com.mbs.spark.tools.DateUtils;
 import lombok.RequiredArgsConstructor;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -23,12 +25,7 @@ import scala.Tuple2;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -119,11 +116,9 @@ public class PageService {
 																		  Tuple2<String, Iterable<Row>> tuple) {
 		String[] targetPages = broadcast.value().split(",");
 		Comparator<Row> comparator = (o1, o2) -> {
-			Date date1 = DateUtils.parseTime(o1.getString(4));
-			Date date2 = DateUtils.parseTime(o2.getString(4));
-			assert date1 != null;
-			assert date2 != null;
-			return (int) (date1.getTime() - date2.getTime());
+			final DateTime dateTime1 = DateUtil.parse(o1.getString(4), DatePattern.NORM_DATETIME_PATTERN);
+			final DateTime dateTime2 = DateUtil.parse(o2.getString(4), DatePattern.NORM_DATETIME_PATTERN);
+			return dateTime1.compareTo(dateTime2);
 		};
 		List<Row> rows = StreamSupport.stream(tuple._2.spliterator(), false)
 				.sorted(comparator)

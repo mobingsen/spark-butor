@@ -1,11 +1,13 @@
 package com.mbs.spark.mock;
 
-import com.mbs.spark.tools.DateUtils;
+import cn.hutool.core.date.DatePattern;
+import cn.hutool.core.date.DateUtil;
 
 import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.time.LocalDateTime;
 import java.util.Random;
 import java.util.UUID;
 import java.util.function.Function;
@@ -23,15 +25,11 @@ public class GenerateMockData {
 		BufferedWriter bw = null;
 		try {
 			String file = "C://Users//Administrator//Desktop//user_visit_action.txt";
-			bw = new BufferedWriter(new OutputStreamWriter(
-					new FileOutputStream(file, true)));
-
-			String[] searchKeywords = new String[] {"火锅", "蛋糕", "重庆辣子鸡", "重庆小面",
-					"呷哺呷哺", "新辣道鱼火锅", "国贸大厦", "太古商场", "日本料理", "温泉"};
-			String date = DateUtils.getTodayDate();
+			bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file, true)));
+			String[] searchKeywords = new String[] {"火锅", "蛋糕", "重庆辣子鸡", "重庆小面", "呷哺呷哺", "新辣道鱼火锅", "国贸大厦", "太古商场", "日本料理", "温泉"};
+			String date = DateUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
 			String[] actions = new String[]{"search", "click", "order", "pay"};
 			Random random = new Random();
-
 			for(int i = 0; i < 100; i++) {
 				long userid = random.nextInt(100);
 
@@ -88,15 +86,9 @@ public class GenerateMockData {
 				}
 			}
 		}
-
-		/**
-		 * ==================================================================
-		 */
 		try {
 			String file = "C://Users//Administrator//Desktop//user_info.txt";
-			bw = new BufferedWriter(new OutputStreamWriter(
-					new FileOutputStream(file, true)));
-
+			bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file, true)));
 			Random random = new Random();
 			String[] sexes = new String[]{"male", "female"};
 			for(int i = 0; i < 100; i ++) {
@@ -120,11 +112,6 @@ public class GenerateMockData {
 				e.printStackTrace();
 			}
 		}
-
-		/**
-		 * ==================================================================
-		 */
-
 		try {
 			String file = "C://Users//Administrator//Desktop//product_info.txt";
 			bw = new BufferedWriter(new OutputStreamWriter(

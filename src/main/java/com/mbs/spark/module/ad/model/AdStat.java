@@ -15,7 +15,7 @@ import javax.persistence.TableGenerator;
  */
 @Getter
 @Setter
-@Entity
+@Entity(name = "tb_ad_stat")
 public class AdStat {
 
 	@Id

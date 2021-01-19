@@ -16,6 +16,6 @@ public interface AdUserClickCountRepository extends JpaRepository<AdUserClickCou
      * @param adId 广告id
      * @return
      */
-    @Query("SELECT acc.clickCount FROM AdUserClickCount acc WHERE acc.date=?1 AND acc.userId=?2 AND acc.adId=?3")
+    @Query("SELECT acc.clickCount FROM tb_ad_user_click_count acc WHERE acc.date=?1 AND acc.userId=?2 AND acc.adId=?3")
     int findClickCountByMultiKey(String date, long userId, long adId);
 }

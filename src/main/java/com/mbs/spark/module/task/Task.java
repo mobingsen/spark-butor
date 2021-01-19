@@ -1,7 +1,7 @@
 package com.mbs.spark.module.task;
 
-import com.google.gson.Gson;
 import com.mbs.spark.converts.JsonConvert;
+import com.mbs.spark.utils.JsonUtil;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -14,7 +14,7 @@ import java.util.Map;
  */
 @Getter
 @Setter
-@Entity
+@Entity(name = "tb_task")
 public class Task {
 
     @Id
@@ -34,6 +34,6 @@ public class Task {
     private String taskParam;
 
     public Param toParam() {
-        return new Gson().fromJson(this.getTaskParam(), Param.class);
+        return JsonUtil.from(this.getTaskParam(), Param.class);
     }
 }

@@ -10,6 +10,6 @@ import org.springframework.stereotype.Repository;
  */
 public interface AdClickTrendRepository extends JpaRepository<AdClickTrend, Long> {
 
-    @Query("SELECT count(act) FROM AdClickTrend act WHERE act.date=?1 AND act.hour=?2 AND act.minute=?3 AND act.adId=?4")
+    @Query("SELECT count(act) FROM tb_ad_click_trend act WHERE act.date=?1 AND act.hour=?2 AND act.minute=?3 AND act.adId=?4")
     int getAdClickTrend(String date, String hour, String minute, long adId);
 }

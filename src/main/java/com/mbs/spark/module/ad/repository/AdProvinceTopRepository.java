@@ -9,6 +9,6 @@ import org.springframework.data.jpa.repository.Query;
  */
 public interface AdProvinceTopRepository extends JpaRepository<AdProvinceTop, Long> {
 
-    @Query("DELETE FROM AdProvinceTop t WHERE t.date=?1 AND t.province=?2")
+    @Query("DELETE FROM tb_ad_province_top t WHERE t.date=?1 AND t.province=?2")
     void deleteByDateAndProvince(String date, String province);
 }
