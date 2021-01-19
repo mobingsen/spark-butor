@@ -22,6 +22,7 @@
         <hadoop.version>2.4.1</hadoop.version>
         <fastutil.version>5.0.9</fastutil.version>
         <hutool.version>5.5.1</hutool.version>
+        <orika.version>1.5.4</orika.version>
     </properties>
 
     <dependencies>
@@ -102,6 +103,15 @@
             <groupId>cn.hutool</groupId>
             <artifactId>hutool-all</artifactId>
             <version>${hutool.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ma.glasnost.orika</groupId>
+            <artifactId>orika-core</artifactId>
+            <version>${orika.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
         </dependency>
     </dependencies>
 

@@ -287,21 +287,21 @@ public class AdService {
                 .registerTempTable("tmp_daily_ad_click_count_by_prov");
         return sqlContext
                 .sql(
-                        "SELECT "
-                                + "date,"
-                                + "province,"
-                                + "ad_id,"
-                                + "click_count "
-                                + "FROM ( "
-                                + "SELECT "
-                                + "date,"
-                                + "province,"
-                                + "ad_id,"
-                                + "click_count,"
-                                + "ROW_NUMBER() OVER(PARTITION BY province ORDER BY click_count DESC) rank "
-                                + "FROM tmp_daily_ad_click_count_by_prov "
-                                + ") t "
-                                + "WHERE rank>=3"
+            "SELECT "
+                    + "date,"
+                    + "province,"
+                    + "ad_id,"
+                    + "click_count "
+                    + "FROM ( "
+                    + "SELECT "
+                    + "date,"
+                    + "province,"
+                    + "ad_id,"
+                    + "click_count,"
+                    + "ROW_NUMBER() OVER(PARTITION BY province ORDER BY click_count DESC) rank "
+                    + "FROM tmp_daily_ad_click_count_by_prov "
+                    + ") t "
+                    + "WHERE rank>=3"
                 ).javaRDD();
     }
 

@@ -1,4 +1,4 @@
-package com.mbs.spark.module.task;
+package com.mbs.spark.module.task.domain;
 
 import lombok.Getter;
 import lombok.Setter;

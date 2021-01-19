@@ -1,9 +1,11 @@
-package com.mbs.spark.module.task;
+package com.mbs.spark.module.task.model;
 
 import com.mbs.spark.converts.JsonConvert;
+import com.mbs.spark.module.task.domain.Param;
 import com.mbs.spark.utils.JsonUtil;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.experimental.Accessors;
 
 import javax.persistence.*;
 import java.util.HashMap;
@@ -14,6 +16,7 @@ import java.util.Map;
  */
 @Getter
 @Setter
+@Accessors(chain = true)
 @Entity(name = "tb_task")
 public class Task {
 

@@ -1,6 +1,6 @@
 package com.mbs.spark.conf;
 
-import com.mbs.spark.module.task.TaskFacade;
+import com.mbs.spark.module.task.facade.TaskFacade;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.server.RouterFunction;
