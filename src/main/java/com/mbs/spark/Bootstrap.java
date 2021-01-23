@@ -8,7 +8,7 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.web.reactive.config.EnableWebFlux;
 
 /**
- * Created by 小墨 on 2020/10/7 12:49
+ * @Created by mobingsen on 2020/10/7 12:49
  */
 @SpringBootApplication
 @EnableScheduling

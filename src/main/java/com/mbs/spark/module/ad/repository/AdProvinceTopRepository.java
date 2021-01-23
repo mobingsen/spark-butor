@@ -5,7 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 /**
- * Created by 小墨 on 2020/10/7 17:53
+ * @Created by mobingsen on 2020/10/7 17:53
  */
 public interface AdProvinceTopRepository extends JpaRepository<AdProvinceTop, Long> {
 

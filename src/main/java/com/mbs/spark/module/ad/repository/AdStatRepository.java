@@ -4,7 +4,7 @@ import com.mbs.spark.module.ad.model.AdStat;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
- * Created by 小墨 on 2020/10/7 18:02
+ * @Created by mobingsen on 2020/10/7 18:02
  */
 public interface AdStatRepository extends JpaRepository<AdStat, Long> {
 }

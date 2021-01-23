@@ -5,7 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 /**
- * Created by 小墨 on 2020/10/7 22:37
+ * @Created by mobingsen on 2020/10/7 22:37
  */
 public interface AdUserClickCountRepository extends JpaRepository<AdUserClickCount, Long> {
 

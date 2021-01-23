@@ -5,7 +5,13 @@ import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
 
+/**
+ * @Created by mobingsen
+ */
 public final class JsonUtil {
+
+    private JsonUtil() {
+    }
 
     private static final Gson GSON = new Gson();
 
@@ -30,6 +36,7 @@ public final class JsonUtil {
     }
 
     /*################################################pretty gson######################################################*/
+
     private static final Gson PRETTY_GSON = new Gson()
             .newBuilder()
             .setPrettyPrinting()

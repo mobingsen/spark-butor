@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 /**
- * Created by 小墨 on 2020/10/7 15:21
+ * @Created by mobingsen on 2020/10/7 15:21
  */
 public interface AdClickTrendRepository extends JpaRepository<AdClickTrend, Long> {
 
